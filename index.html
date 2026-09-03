@@ -303,9 +303,17 @@
   var reveal = null; // { p1: move, p2: move } shown while both actions are revealed before resolving
 
   var roundTimeout = null;
+  var timerFrame = null;
 
   function clearRoundTimer(){
     if(roundTimeout){ clearTimeout(roundTimeout); roundTimeout = null; }
+  }
+
+  function stopTimerBarAnimation(){
+    if(timerFrame !== null){
+      cancelAnimationFrame(timerFrame);
+      timerFrame = null;
+    }
   }
 
   // ラウンドの終了時刻はstateで共有する。
@@ -343,31 +351,33 @@
   }
 
   function animateTimerBar(){
-    requestAnimationFrame(function(){
+    // CSS transitionで1秒アニメーションを開始すると、render()でDOMが
+    // 作り直された瞬間に100%へ戻ることがある。
+    // そこで、共有された終了時刻から毎フレーム現在位置を直接計算する。
+    stopTimerBarAnimation();
+
+    function tick(){
       var bar = document.getElementById('timerbar');
-      if(!bar) return;
+      if(!bar || !state || state.status !== 'playing' || !state.roundEndsAt){
+        timerFrame = null;
+        return;
+      }
 
-      var remaining = state && state.roundEndsAt
-        ? Math.max(0, state.roundEndsAt - Date.now())
-        : TURN_MS;
-
+      var remaining = Math.max(0, state.roundEndsAt - Date.now());
       var percent = Math.max(0, Math.min(100, remaining / TURN_MS * 100));
 
-      // 現在残っている位置から0%まで動かす。
-      // render()後も100%には戻さない。
       bar.style.transition = 'none';
       bar.style.width = percent + '%';
-      void bar.offsetWidth;
-      bar.style.transition = 'width ' + remaining + 'ms linear';
 
-      requestAnimationFrame(function(){
-        if(bar && state && state.roundEndsAt){
-          var latestRemaining = Math.max(0, state.roundEndsAt - Date.now());
-          bar.style.transition = 'width ' + latestRemaining + 'ms linear';
-          bar.style.width = '0%';
-        }
-      });
-    });
+      if(remaining <= 0){
+        timerFrame = null;
+        return;
+      }
+
+      timerFrame = requestAnimationFrame(tick);
+    }
+
+    tick();
   }
 
   function randCode(){
@@ -861,7 +871,11 @@
       } else {
         html += '<div class="actions"><div class="abtn startbtn" id="btnStart"><span class="tt">▶ スタート</span></div></div>';
       }
-    } else if(state.status === 'playing'){
+    }
+
+    // 対戦中は、公開中も含めて行動ボタンを常に表示する。
+    // 公開中・自分が選択済み・攻撃不能時は押せないだけで、表示は消さない。
+    if(state.status === 'playing'){
       html += '<div class="actions">';
       Object.keys(ACTIONS).forEach(function(key){
         var a = ACTIONS[key];
@@ -891,7 +905,11 @@
 
     // render()でtimerbarのDOMが作り直されるため、
     // 現在のroundEndsAtから残り時間を計算して同じ位置から再開する。
-    if(showTimerBar){ animateTimerBar(); }
+    if(showTimerBar){
+      animateTimerBar();
+    } else {
+      stopTimerBarAnimation();
+    }
 
     var startBtn = document.getElementById('btnStart');
     if(startBtn) startBtn.addEventListener('click', pressStart);
