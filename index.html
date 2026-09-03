@@ -184,7 +184,7 @@
   .pip2.on{ background:#ffe14d; }
 
   .divider2{
-    height:7px; position:relative; background:var(--bg);
+    height:21px; position:relative; background:var(--bg);
     border-top:2.5px dashed #38424f; border-bottom:2.5px dashed #38424f;
   }
   .timerbar{
@@ -268,7 +268,7 @@
   var BONUS_MULT = 1.5;
   var START_HP = 100;
   var ID_PREFIX = 'cbs-duel-';
-  var TURN_MS = 2000;
+  var TURN_MS = 1000;
 
   var ACTIONS = {
     charge:  { label:'ためる', icon:'⚡', sub:'次の攻撃を強化', cls:'charge' },
@@ -278,7 +278,7 @@
 
   var app = document.getElementById('app');
 
-  var ui = { screen:'home', nameInput:'', codeInput:'', toast:'' };
+  var ui = { screen:'home', nameInput:'プレイヤー' + (Math.floor(Math.random()*90)+10), codeInput:'', toast:'' };
 
   var role = null;      // 'host' | 'guest'
   var peer = null;
@@ -318,9 +318,9 @@
   }
 
   function randCode(){
-    var chars = 'abcdefghjkmnpqrstuvwxyz23456789';
+    var chars = '0123456789';
     var s = '';
-    for(var i=0;i<2;i++) s += chars[Math.floor(Math.random()*chars.length)];
+    for(var i=0;i<1;i++) s += chars[Math.floor(Math.random()*chars.length)];
     return s;
   }
 
@@ -701,7 +701,7 @@
           '<div class="brand"><div class="mark">guest</div><h1>部屋に入る</h1></div>' +
           '<div class="card">' +
             '<div class="label">部屋コード</div>' +
-            '<input type="text" id="codeField" placeholder="例: a1" maxlength="2" value="'+esc(ui.codeInput)+'" style="text-align:center;letter-spacing:.3em;font-size:20px" />' +
+            '<input type="text" id="codeField" placeholder="例: 7" maxlength="1" inputmode="numeric" value="'+esc(ui.codeInput)+'" style="text-align:center;letter-spacing:.3em;font-size:20px" />' +
             '<div class="row" style="margin-top:16px">' +
               '<button class="btn" id="btnBack">戻る</button>' +
               '<button class="btn primary" id="btnGo">参加する</button>' +
