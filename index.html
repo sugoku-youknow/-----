@@ -304,6 +304,7 @@
 
   var roundTimeout = null;
   var timerFrame = null;
+  var roundClosed = false; // ホスト基準の1秒が終了したか
 
   function clearRoundTimer(){
     if(roundTimeout){ clearTimeout(roundTimeout); roundTimeout = null; }
@@ -316,38 +317,63 @@
     }
   }
 
-  // ラウンドの終了時刻はstateで共有する。
-  // これにより、render()で画面を描き直してもタイマーバーが1秒地点に戻らない。
+  // ラウンドの終了時刻はホストが決め、両者が同じ時刻までバーを進める。
+  // 行動を早く選んでも、相手が選ぶまで表示上のラウンドを終了させない。
   function startRoundTimer(){
     clearRoundTimer();
+    stopTimerBarAnimation();
 
     if(!state || state.status !== 'playing') return;
 
-    // ホストだけが新しいラウンドの終了時刻を決める。
-    // ゲストは受信したstate.roundEndsAtをそのまま使う。
     if(!state.roundEndsAt){
       state.roundEndsAt = Date.now() + TURN_MS;
     }
 
+    roundClosed = false;
     var remaining = Math.max(0, state.roundEndsAt - Date.now());
-
-    if(remaining <= 0){
-      roundTimeout = setTimeout(function(){
-        roundTimeout = null;
-        if(state && state.status === 'playing' && !reveal && !myMove){
-          pickMove('barrier');
-        }
-      }, 0);
-    } else {
-      roundTimeout = setTimeout(function(){
-        roundTimeout = null;
-        if(state && state.status === 'playing' && !reveal && !myMove){
-          pickMove('barrier');
-        }
-      }, remaining);
-    }
+    roundTimeout = setTimeout(function(){
+      roundTimeout = null;
+      handleRoundDeadline();
+    }, remaining);
 
     animateTimerBar();
+  }
+
+  // 1秒が終わった瞬間にだけラウンドを確定する。
+  // これが重要で、「片方が早く選んだからバーが途中で消える」を防ぐ。
+  function handleRoundDeadline(){
+    if(!state || state.status !== 'playing') return;
+    if(roundClosed) return;
+    roundClosed = true;
+
+    if(role === 'guest'){
+      if(!myMove){
+        myMove = 'barrier';
+        if(conn){
+          conn.send({ type:'move', round: state.round, move:'barrier' });
+        }
+        render();
+      }
+      return;
+    }
+
+    // ホスト側では、未選択の行動をバリアとして確定する。
+    if(!hostPending.p1) hostPending.p1 = 'barrier';
+    if(!hostPending.p2) hostPending.p2 = 'barrier';
+    resolveAtDeadline();
+  }
+
+  function resolveAtDeadline(){
+    if(role !== 'host' || !roundClosed) return;
+    if(!hostPending.p1) hostPending.p1 = 'barrier';
+    if(!hostPending.p2) hostPending.p2 = 'barrier';
+
+    var m1 = hostPending.p1, m2 = hostPending.p2;
+    reveal = { p1: m1, p2: m2 };
+    stopTimerBarAnimation();
+    if(conn){ conn.send({ type:'reveal', reveal: reveal }); }
+    render();
+    setTimeout(function(){ finishResolveHost(m1, m2); }, 1400);
   }
 
   function getTimerPercent(){
@@ -528,9 +554,9 @@
       return;
     }
     if(msg.type === 'move'){
-      if(msg.round !== state.round) return;
+      if(!state || msg.round !== state.round || roundClosed) return;
       hostPending.p2 = msg.move;
-      tryResolveHost();
+      render();
       return;
     }
     if(msg.type === 'restart-request'){
@@ -544,18 +570,15 @@
       state.status = 'playing';
       // ホストがラウンド開始時刻を確定する。
       state.roundEndsAt = Date.now() + TURN_MS;
+      roundClosed = false;
       startRoundTimer();
     }
   }
 
   function tryResolveHost(){
-    if(!hostPending.p1 || !hostPending.p2) { render(); return; }
-    clearRoundTimer();
-    var m1 = hostPending.p1, m2 = hostPending.p2;
-    reveal = { p1: m1, p2: m2 };
-    if(conn){ conn.send({ type:'reveal', reveal: reveal }); }
+    // 両者が選択しても、1秒が終わるまでは確定しない。
+    // タイムバーの表示をホスト・ゲストで同じにするため、確定時刻を一本化する。
     render();
-    setTimeout(function(){ finishResolveHost(m1, m2); }, 1400);
   }
 
   function finishResolveHost(m1, m2){
@@ -570,6 +593,7 @@
       state.round = state.round + 1;
       // 次ラウンドの1秒をホスト基準で開始し、その終了時刻をゲストへ共有する。
       state.roundEndsAt = Date.now() + TURN_MS;
+      roundClosed = false;
     }
     hostPending = { p1:null, p2:null };
     reveal = null;
@@ -587,6 +611,8 @@
     reveal = null;
     myMove = null;
     clearRoundTimer();
+    stopTimerBarAnimation();
+    roundClosed = false;
     if(conn){ conn.send({ type:'state', state: state }); }
     render();
   }
@@ -638,6 +664,7 @@
   function handleGuestData(msg){
     if(msg.type === 'reveal'){
       clearRoundTimer();
+      stopTimerBarAnimation();
       reveal = msg.reveal;
       render();
       return;
@@ -647,6 +674,7 @@
       reveal = null;
       myMove = null;
       ui.screen = 'battle';
+      roundClosed = false;
       render();
       if(state.status === 'playing'){ startRoundTimer(); } else { clearRoundTimer(); }
     }
@@ -682,10 +710,12 @@
     var myKey = role === 'host' ? 'p1' : 'p2';
     var me = state.players[myKey];
     if(move === 'attack' && me.charge <= 0) return;
-    clearRoundTimer();
+    // 行動を選んでもラウンド終了タイマーは止めない。
+    // 1秒間は必ず同じ基準で赤いバーが進み、確定は1秒後に行う。
     myMove = move;
 
     if(role === 'host'){
+      if(roundClosed) return;
       hostPending.p1 = move;
       tryResolveHost();
     } else {
