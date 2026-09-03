@@ -861,11 +861,11 @@
       } else {
         html += '<div class="actions"><div class="abtn startbtn" id="btnStart"><span class="tt">▶ スタート</span></div></div>';
       }
-    } else if(state.status === 'playing' && !reveal){
+    } else if(state.status === 'playing'){
       html += '<div class="actions">';
       Object.keys(ACTIONS).forEach(function(key){
         var a = ACTIONS[key];
-        var disabled = (key==='attack' && me.charge<=0) || !!myMove;
+        var disabled = !!reveal || (key==='attack' && me.charge<=0) || !!myMove;
         var picked = myMove === key;
         html += '<div class="abtn '+a.cls+' '+(disabled && !picked ? 'disabled':'')+' '+(picked?'picked':'')+'" data-move="'+key+'">' +
           '<span class="ic">'+a.icon+'</span>' +
