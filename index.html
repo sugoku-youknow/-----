@@ -122,9 +122,10 @@
   .abtn.picked.barrier{ background:rgba(62,201,214,.15); border-color:var(--barrier); }
   .abtn.picked.attack{ background:rgba(224,67,90,.15); border-color:var(--attack); }
   .abtn.disabled{ opacity:.3; cursor:not-allowed; }
+  .abtn.startbtn{ background:#eafff0; border-color:#2f9e52; }
+  .abtn.startbtn .tt{ color:#1f7a3d; font-size:16px; }
 
   .waitline{ text-align:center; font-size:12px; color:var(--sub); margin-top:12px; }
-  .timer-line{ text-align:center; font-size:13px; color:#16202c; font-weight:800; margin-bottom:6px; }
 
   .reveal-title{ text-align:center; font-size:12px; color:var(--sub); letter-spacing:.1em; margin-top:14px; margin-bottom:10px; }
   .reveal{ display:flex; align-items:center; justify-content:center; gap:14px; }
@@ -183,7 +184,13 @@
   .pip2.on{ background:#ffe14d; }
 
   .divider2{
-    height:0; border-top:2.5px dashed #16202c;
+    height:7px; position:relative; background:var(--bg);
+    border-top:2.5px dashed #38424f; border-bottom:2.5px dashed #38424f;
+  }
+  .timerbar{
+    position:absolute; top:0; left:0; height:100%; width:0%;
+    background:linear-gradient(90deg,#ff6b7a,#e0435a);
+    box-shadow:0 0 10px rgba(224,67,90,.7);
   }
 
   .duel-half .actions{ margin-top:6px; width:100%; max-width:600px; }
@@ -281,27 +288,33 @@
   var hostPending = { p1:null, p2:null }; // host-side only: pending moves this round
   var reveal = null; // { p1: move, p2: move } shown while both actions are revealed before resolving
 
-  var timeLeft = 2;
-  var timeLeftInterval = null;
+  var roundTimeout = null;
 
   function clearRoundTimer(){
-    if(timeLeftInterval){ clearInterval(timeLeftInterval); timeLeftInterval = null; }
+    if(roundTimeout){ clearTimeout(roundTimeout); roundTimeout = null; }
   }
 
   function startRoundTimer(){
     clearRoundTimer();
-    timeLeft = Math.round(TURN_MS/1000);
-    timeLeftInterval = setInterval(function(){
-      timeLeft -= 1;
-      if(timeLeft <= 0){
-        clearRoundTimer();
-        if(state && state.status === 'playing' && !reveal && !myMove){
-          pickMove('barrier');
-        }
-      } else {
-        render();
+    roundTimeout = setTimeout(function(){
+      roundTimeout = null;
+      if(state && state.status === 'playing' && !reveal && !myMove){
+        pickMove('barrier');
       }
-    }, 1000);
+    }, TURN_MS);
+    animateTimerBar();
+  }
+
+  function animateTimerBar(){
+    requestAnimationFrame(function(){
+      var bar = document.getElementById('timerbar');
+      if(!bar) return;
+      bar.style.transition = 'none';
+      bar.style.width = '100%';
+      void bar.offsetWidth; // force reflow
+      bar.style.transition = 'width ' + TURN_MS + 'ms linear';
+      requestAnimationFrame(function(){ bar.style.width = '0%'; });
+    });
   }
 
   function randCode(){
@@ -314,13 +327,14 @@
   function freshState(hostName, guestName){
     return {
       round: 1,
-      status: 'playing',
+      status: 'ready',
       winner: null,
+      ready: { p1:false, p2:false },
       players: {
         p1: { name: hostName || 'Player 1', hp: START_HP, charge:0 },
         p2: { name: guestName || 'Player 2', hp: START_HP, charge:0 },
       },
-      log: [{ round:0, text:'バトル開始！' }],
+      log: [{ round:0, text:'両者の準備が整うとバトル開始！' }],
     };
   }
 
@@ -431,8 +445,15 @@
       hostPending = { p1:null, p2:null };
       ui.screen = 'battle';
       render();
-      startRoundTimer();
       conn.send({ type:'state', state: state });
+      return;
+    }
+    if(msg.type === 'ready'){
+      if(!state || state.status !== 'ready') return;
+      state.ready.p2 = true;
+      checkReadyStart();
+      if(conn){ conn.send({ type:'state', state: state }); }
+      render();
       return;
     }
     if(msg.type === 'move'){
@@ -444,6 +465,13 @@
     if(msg.type === 'restart-request'){
       doRestart();
       return;
+    }
+  }
+
+  function checkReadyStart(){
+    if(state.status === 'ready' && state.ready.p1 && state.ready.p2){
+      state.status = 'playing';
+      startRoundTimer();
     }
   }
 
@@ -482,9 +510,9 @@
     hostPending = { p1:null, p2:null };
     reveal = null;
     myMove = null;
+    clearRoundTimer();
     if(conn){ conn.send({ type:'state', state: state }); }
     render();
-    startRoundTimer();
   }
 
   // ---------- guest ----------
@@ -549,6 +577,20 @@
   }
 
   // ---------- shared ----------
+  function pressStart(){
+    if(!state || state.status !== 'ready') return;
+    if(role === 'host'){
+      state.ready.p1 = true;
+      checkReadyStart();
+      if(conn){ conn.send({ type:'state', state: state }); }
+      render();
+    } else {
+      state.ready.p2 = true; // optimistic local update
+      if(conn){ conn.send({ type:'ready' }); }
+      render();
+    }
+  }
+
   function pickMove(move){
     if(!state || state.status !== 'playing' || myMove) return;
     var myKey = role === 'host' ? 'p1' : 'p2';
@@ -695,7 +737,10 @@
 
     // action box contents (mirrors around the divider)
     var oppActionHtml, myActionHtml;
-    if(reveal){
+    if(state.status === 'ready'){
+      oppActionHtml = state.ready[oppKey] ? '<span class="tt">準備完了</span>' : '<span class="ph">準備中…</span>';
+      myActionHtml  = state.ready[myKey]  ? '<span class="tt">準備完了</span>' : '<span class="ph">未準備</span>';
+    } else if(reveal){
       var oa = ACTIONS[reveal[oppKey]], ma = ACTIONS[reveal[myKey]];
       oppActionHtml = '<span class="ic">'+oa.icon+'</span><span class="tt">'+oa.label+'</span>';
       myActionHtml  = '<span class="ic">'+ma.icon+'</span><span class="tt">'+ma.label+'</span>';
@@ -709,6 +754,8 @@
       }
     }
 
+    var showTimerBar = (state.status === 'playing' && !reveal && !myMove);
+
     var html = (ui.toast ? '<div class="toast">'+esc(ui.toast)+'</div>' : '') +
       '<div class="duel-wrap">' +
         '<div class="duel-half opp">' +
@@ -717,17 +764,20 @@
           '<div class="pipsrow">' + pipsHtml(opp.charge) + '</div>' +
           '<div class="actionbox '+(reveal?ACTIONS[reveal[oppKey]].cls:'')+'">' + oppActionHtml + '</div>' +
         '</div>' +
-        '<div class="divider2"></div>' +
+        '<div class="divider2">' + (showTimerBar ? '<div class="timerbar" id="timerbar"></div>' : '') + '</div>' +
         '<div class="duel-half me">' +
           '<div class="actionbox '+(reveal?ACTIONS[reveal[myKey]].cls:(myMove?ACTIONS[myMove].cls:''))+'">' + myActionHtml + '</div>' +
           '<div class="pipsrow">' + pipsHtml(me.charge) + '</div>' +
           '<div class="hpbox-outer"><div class="hpbox-fill" style="width:'+me.hp+'%"></div><div class="hpbox-num">'+me.hp+' / 100</div></div>' +
           '<div class="namebox">'+esc(me.name)+'</div>';
 
-    if(state.status === 'playing' && !reveal){
-      if(!myMove){
-        html += '<div class="timer-line">⏱ 残り ' + timeLeft + ' 秒</div>';
+    if(state.status === 'ready'){
+      if(state.ready[myKey]){
+        html += '<div class="waitline">準備完了！相手を待っています…</div>';
+      } else {
+        html += '<div class="actions"><div class="abtn startbtn" id="btnStart"><span class="tt">▶ スタート</span></div></div>';
       }
+    } else if(state.status === 'playing' && !reveal){
       html += '<div class="actions">';
       Object.keys(ACTIONS).forEach(function(key){
         var a = ACTIONS[key];
@@ -755,16 +805,21 @@
 
     app.innerHTML = html;
 
+    var startBtn = document.getElementById('btnStart');
+    if(startBtn) startBtn.addEventListener('click', pressStart);
+
     var restartBtn = document.getElementById('btnRestart');
     if(restartBtn) restartBtn.addEventListener('click', requestRestart);
 
-    var abtns = app.querySelectorAll('.abtn');
+    var abtns = app.querySelectorAll('.abtn:not(.startbtn)');
     abtns.forEach(function(el){
       el.addEventListener('click', function(){
         if(el.classList.contains('disabled')) return;
         pickMove(el.getAttribute('data-move'));
       });
     });
+
+    if(showTimerBar){ animateTimerBar(); }
   }
 
   function pipsHtml(charge){
