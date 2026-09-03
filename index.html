@@ -821,7 +821,7 @@
       }
     }
 
-    var showTimerBar = (state.status === 'playing' && !reveal && !myMove);
+    var showTimerBar = (state.status === 'playing' && !reveal);
 
     var html = (ui.toast ? '<div class="toast">'+esc(ui.toast)+'</div>' : '') +
       '<div class="duel-wrap">' +
@@ -888,6 +888,10 @@
     }
 
     app.innerHTML = html;
+
+    // render()でtimerbarのDOMが作り直されるため、
+    // 現在のroundEndsAtから残り時間を計算して同じ位置から再開する。
+    if(showTimerBar){ animateTimerBar(); }
 
     var startBtn = document.getElementById('btnStart');
     if(startBtn) startBtn.addEventListener('click', pressStart);
