@@ -17,6 +17,7 @@
     --attack:#e0435a;
     --good:#5fd98a;
   }
+  html, body { height: 100%; margin: 0; padding: 0; }
   #app, #app *{ box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
   #app{
     background:var(--bg);
@@ -141,22 +142,23 @@
   @keyframes reveal-pop{ from{ transform:scale(0.85); opacity:0; } to{ transform:scale(1); opacity:1; } }
 
   /* --- split duel layout --- */
-  #app.mode-duel{ padding:14px; background:transparent; min-height:auto; }
+  #app.mode-duel{ padding:0; background:var(--bg); height:100vh; min-height:100vh; display:flex; flex-direction:column; border-radius:0; overflow-y:auto; }
   #app.mode-duel::before{ display:none; }
 
   .duel-wrap{
     display:flex; flex-direction:column;
-    border:3px solid #16202c; border-radius:10px; overflow:hidden;
+    border:none; border-radius:0; overflow:hidden;
+    flex:1;
   }
   .duel-half{
-    display:flex; flex-direction:column; align-items:center;
-    padding:18px 16px; gap:10px;
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    padding:18px 16px; gap:10px; flex:1;
   }
   .duel-half.opp{ background:#ffd7dd; }
   .duel-half.me{ background:#d6f0fb; }
 
   .namebox, .hpbox-outer, .actionbox{
-    width:100%; max-width:360px;
+    width:100%; max-width:600px;
     background:#fff; border:2.5px solid #16202c; border-radius:5px;
     color:#16202c;
   }
@@ -175,7 +177,7 @@
   .actionbox.barrier{ background:#dbf7fa; }
   .actionbox.attack{ background:#fbdde1; }
 
-  .pipsrow{ display:flex; gap:4px; }
+  .pipsrow{ display:flex; gap:4px; flex-wrap:wrap; justify-content:center; }
   .pip2{ width:13px; height:13px; border:1.5px solid #16202c; background:#fff; border-radius:2px; }
   .pip2.on{ background:#ffe14d; }
 
@@ -183,9 +185,9 @@
     height:0; border-top:2.5px dashed #16202c;
   }
 
-  .duel-half .actions{ margin-top:6px; }
+  .duel-half .actions{ margin-top:6px; width:100%; max-width:600px; }
   .duel-half .abtn{
-    background:#fff; border:2px solid #16202c; color:#16202c;
+    background:#fff; border:2px solid #16202c; color:#16202c; padding:24px 8px;
   }
   .duel-half .abtn .sub{ display:none; }
   .duel-half .abtn.charge:hover:not(.disabled):not(.picked){ border-color:#c9971f; }
@@ -195,10 +197,10 @@
   .duel-half .abtn.picked.barrier{ background:#c8f2f6; }
   .duel-half .abtn.picked.attack{ background:#fac9d0; }
 
-  .meta-line{ text-align:center; font-size:12px; color:var(--sub); margin-top:12px; line-height:1.6; padding:0 8px; }
+  .meta-line{ text-align:center; font-size:12px; color:var(--sub); margin:0; line-height:1.6; padding:8px; background:var(--bg); }
 
   @media (max-width: 480px){
-    #app.mode-duel{ padding:8px; }
+    #app.mode-duel{ padding:0; }
     .duel-half{ padding:14px 10px; gap:8px; }
     .namebox{ font-size:13px; padding:8px 10px; }
     .actionbox{ min-height:54px; font-size:15px; }
@@ -253,7 +255,7 @@
 (function(){
   "use strict";
 
-  var MAX_CHARGE = 5;
+  var MAX_CHARGE = 10;
   var BASE_DMG = 20;
   var BONUS_MULT = 1.5;
   var START_HP = 100;
