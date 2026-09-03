@@ -309,52 +309,36 @@
     if(roundTimeout){ clearTimeout(roundTimeout); roundTimeout = null; }
   }
 
-  function stopTimerBarAnimation(){
-    if(timerFrame !== null){
-      cancelAnimationFrame(timerFrame);
-      timerFrame = null;
-    }
+  function getTimerPercent(){
+    if(!state || state.status !== 'playing' || !state.roundEndsAt) return 0;
+    return Math.max(0, Math.min(100, (state.roundEndsAt - Date.now()) / TURN_MS * 100));
   }
 
-  // ラウンドの終了時刻はstateで共有する。
-  // これにより、render()で画面を描き直してもタイマーバーが1秒地点に戻らない。
+  function updateTimerBar(){
+    var bar = document.getElementById('timerbar');
+    if(!bar) return;
+    bar.style.transition = 'none';
+    bar.style.width = getTimerPercent() + '%';
+  }
+
   function startRoundTimer(){
     clearRoundTimer();
-
     if(!state || state.status !== 'playing') return;
 
-    // ホストだけが新しいラウンドの終了時刻を決める。
-    // ゲストは受信したstate.roundEndsAtをそのまま使う。
-    if(!state.roundEndsAt){
-      state.roundEndsAt = Date.now() + TURN_MS;
-    }
-
     var remaining = Math.max(0, state.roundEndsAt - Date.now());
-
-    if(remaining <= 0){
-      roundTimeout = setTimeout(function(){
-        roundTimeout = null;
-        if(state && state.status === 'playing' && !reveal && !myMove){
-          pickMove('barrier');
-        }
-      }, 0);
-    } else {
-      roundTimeout = setTimeout(function(){
-        roundTimeout = null;
-        if(state && state.status === 'playing' && !reveal && !myMove){
-          pickMove('barrier');
-        }
-      }, remaining);
-    }
-
+    roundTimeout = setTimeout(function(){
+      roundTimeout = null;
+      if(state && state.status === 'playing' && !reveal && !myMove){
+        pickMove('barrier');
+      }
+    }, remaining);
     animateTimerBar();
   }
 
   function animateTimerBar(){
-    // CSS transitionで1秒アニメーションを開始すると、render()でDOMが
-    // 作り直された瞬間に100%へ戻ることがある。
-    // そこで、共有された終了時刻から毎フレーム現在位置を直接計算する。
-    stopTimerBarAnimation();
+    // render()で画面全体が再描画されても、タイマー自体は再スタートさせない。
+    // roundEndsAtを基準に現在位置を毎フレーム計算する。
+    if(timerFrame !== null) return;
 
     function tick(){
       var bar = document.getElementById('timerbar');
@@ -364,20 +348,24 @@
       }
 
       var remaining = Math.max(0, state.roundEndsAt - Date.now());
-      var percent = Math.max(0, Math.min(100, remaining / TURN_MS * 100));
-
       bar.style.transition = 'none';
-      bar.style.width = percent + '%';
+      bar.style.width = Math.max(0, Math.min(100, remaining / TURN_MS * 100)) + '%';
 
       if(remaining <= 0){
         timerFrame = null;
         return;
       }
-
       timerFrame = requestAnimationFrame(tick);
     }
 
-    tick();
+    timerFrame = requestAnimationFrame(tick);
+  }
+
+  function stopTimerBarAnimation(){
+    if(timerFrame !== null){
+      cancelAnimationFrame(timerFrame);
+      timerFrame = null;
+    }
   }
 
   function randCode(){
@@ -832,6 +820,7 @@
     }
 
     var showTimerBar = (state.status === 'playing' && !reveal);
+    var timerPercent = showTimerBar ? getTimerPercent() : 0;
 
     var html = (ui.toast ? '<div class="toast">'+esc(ui.toast)+'</div>' : '') +
       '<div class="duel-wrap">' +
@@ -841,7 +830,7 @@
           '<div class="pipsrow">' + pipsHtml(opp.charge) + '</div>' +
           '<div class="actionbox '+(reveal?ACTIONS[reveal[oppKey]].cls:'')+'">' + oppActionHtml + '</div>' +
         '</div>' +
-        '<div class="divider2">' + (showTimerBar ? '<div class="timerbar" id="timerbar"></div>' : '') + '</div>' +
+        '<div class="divider2">' + (showTimerBar ? '<div class="timerbar" id="timerbar" style="width:'+timerPercent+'%"></div>' : '') + '</div>' +
         '<div class="duel-half me">' +
           '<div class="actionbox '+(reveal?ACTIONS[reveal[myKey]].cls:(myMove?ACTIONS[myMove].cls:''))+'">' + myActionHtml + '</div>' +
           '<div class="pipsrow">' + pipsHtml(me.charge) + '</div>' +
@@ -906,6 +895,7 @@
     // render()でtimerbarのDOMが作り直されるため、
     // 現在のroundEndsAtから残り時間を計算して同じ位置から再開する。
     if(showTimerBar){
+      updateTimerBar();
       animateTimerBar();
     } else {
       stopTimerBarAnimation();
