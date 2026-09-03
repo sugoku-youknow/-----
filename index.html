@@ -125,6 +125,19 @@
   .abtn.startbtn{ background:#eafff0; border-color:#2f9e52; }
   .abtn.startbtn .tt{ color:#1f7a3d; font-size:16px; }
 
+  .hpsetter{
+    display:flex; align-items:center; justify-content:center; gap:12px;
+    margin-top:10px; width:100%; max-width:600px;
+  }
+  .hpsetter-label{ font-size:12px; font-weight:700; color:#16202c; }
+  .hpctrl{ display:flex; align-items:center; gap:10px; }
+  .hpbtn{
+    width:30px; height:30px; border-radius:6px; border:2px solid #16202c;
+    background:#fff; color:#16202c; font-size:16px; font-weight:800; cursor:pointer; line-height:1;
+  }
+  .hpbtn:active{ transform:scale(0.95); }
+  .hpval{ font-size:16px; font-weight:800; color:#16202c; min-width:34px; text-align:center; }
+
   .waitline{ text-align:center; font-size:12px; color:var(--sub); margin-top:12px; }
 
   .reveal-title{ text-align:center; font-size:12px; color:var(--sub); letter-spacing:.1em; margin-top:14px; margin-bottom:10px; }
@@ -179,8 +192,8 @@
   .actionbox.barrier{ background:#dbf7fa; }
   .actionbox.attack{ background:#fbdde1; }
 
-  .pipsrow{ display:flex; gap:4px; flex-wrap:wrap; justify-content:center; }
-  .pip2{ width:13px; height:13px; border:1.5px solid #16202c; background:#fff; border-radius:2px; }
+  .pipsrow{ display:flex; gap:7px; flex-wrap:wrap; justify-content:center; }
+  .pip2{ width:26px; height:26px; border:2.5px solid #16202c; background:#fff; border-radius:5px; }
   .pip2.on{ background:#ffe14d; }
 
   .divider2{
@@ -213,6 +226,8 @@
     .namebox{ font-size:13px; padding:8px 10px; }
     .actionbox{ min-height:54px; font-size:15px; }
     .actionbox .ic{ font-size:19px; }
+    .pip2{ width:20px; height:20px; }
+    .hpsetter{ gap:8px; }
     .meta-line{ font-size:11px; }
   }
 
@@ -264,9 +279,9 @@
   "use strict";
 
   var MAX_CHARGE = 10;
-  var BASE_DMG = 50;
+  var BASE_DMG = 10;
   var BONUS_MULT = 1.5;
-  var START_HP = 100;
+  var START_HP = 20;
   var ID_PREFIX = 'cbs-duel-';
   var TURN_MS = 1000;
 
@@ -324,15 +339,17 @@
     return s;
   }
 
-  function freshState(hostName, guestName){
+  function freshState(hostName, guestName, hpSetting){
+    var hp = hpSetting || START_HP;
     return {
       round: 1,
       status: 'ready',
       winner: null,
       ready: { p1:false, p2:false },
+      hpSetting: hp,
       players: {
-        p1: { name: hostName || 'Player 1', hp: START_HP, charge:0 },
-        p2: { name: guestName || 'Player 2', hp: START_HP, charge:0 },
+        p1: { name: hostName || 'Player 1', hp: hp, charge:0 },
+        p2: { name: guestName || 'Player 2', hp: hp, charge:0 },
       },
       log: [{ round:0, text:'両者の準備が整うとバトル開始！' }],
     };
@@ -506,7 +523,8 @@
 
   function doRestart(){
     var hostName = state.players.p1.name, guestName = state.players.p2.name;
-    state = freshState(hostName, guestName);
+    var hpSetting = state.hpSetting;
+    state = freshState(hostName, guestName, hpSetting);
     hostPending = { p1:null, p2:null };
     reveal = null;
     myMove = null;
@@ -589,6 +607,16 @@
       if(conn){ conn.send({ type:'ready' }); }
       render();
     }
+  }
+
+  function adjustHp(delta){
+    if(role !== 'host' || !state || state.status !== 'ready') return;
+    var next = Math.max(10, Math.min(999, state.hpSetting + delta));
+    state.hpSetting = next;
+    state.players.p1.hp = next;
+    state.players.p2.hp = next;
+    if(conn){ conn.send({ type:'state', state: state }); }
+    render();
   }
 
   function pickMove(move){
@@ -760,7 +788,7 @@
       '<div class="duel-wrap">' +
         '<div class="duel-half opp">' +
           '<div class="namebox">'+esc(opp.name)+'</div>' +
-          '<div class="hpbox-outer"><div class="hpbox-fill" style="width:'+opp.hp+'%"></div><div class="hpbox-num">'+opp.hp+' / 100</div></div>' +
+          '<div class="hpbox-outer"><div class="hpbox-fill" style="width:'+Math.round(opp.hp/state.hpSetting*100)+'%"></div><div class="hpbox-num">'+opp.hp+' / '+state.hpSetting+'</div></div>' +
           '<div class="pipsrow">' + pipsHtml(opp.charge) + '</div>' +
           '<div class="actionbox '+(reveal?ACTIONS[reveal[oppKey]].cls:'')+'">' + oppActionHtml + '</div>' +
         '</div>' +
@@ -768,10 +796,27 @@
         '<div class="duel-half me">' +
           '<div class="actionbox '+(reveal?ACTIONS[reveal[myKey]].cls:(myMove?ACTIONS[myMove].cls:''))+'">' + myActionHtml + '</div>' +
           '<div class="pipsrow">' + pipsHtml(me.charge) + '</div>' +
-          '<div class="hpbox-outer"><div class="hpbox-fill" style="width:'+me.hp+'%"></div><div class="hpbox-num">'+me.hp+' / 100</div></div>' +
+          '<div class="hpbox-outer"><div class="hpbox-fill" style="width:'+Math.round(me.hp/state.hpSetting*100)+'%"></div><div class="hpbox-num">'+me.hp+' / '+state.hpSetting+'</div></div>' +
           '<div class="namebox">'+esc(me.name)+'</div>';
 
     if(state.status === 'ready'){
+      html += '<div class="actions">';
+      Object.keys(ACTIONS).forEach(function(key){
+        var a = ACTIONS[key];
+        html += '<div class="abtn '+a.cls+' disabled" data-move="'+key+'">' +
+          '<span class="ic">'+a.icon+'</span>' +
+          '<span class="tt">'+a.label+'</span>' +
+        '</div>';
+      });
+      html += '</div>';
+
+      html += '<div class="hpsetter">' +
+        '<span class="hpsetter-label">初期HP</span>' +
+        (role === 'host'
+          ? '<div class="hpctrl"><button class="hpbtn" id="hpMinus" type="button">−</button><span class="hpval">'+state.hpSetting+'</span><button class="hpbtn" id="hpPlus" type="button">＋</button></div>'
+          : '<span class="hpval">'+state.hpSetting+'</span>')
+      + '</div>';
+
       if(state.ready[myKey]){
         html += '<div class="waitline">準備完了！相手を待っています…</div>';
       } else {
@@ -807,6 +852,11 @@
 
     var startBtn = document.getElementById('btnStart');
     if(startBtn) startBtn.addEventListener('click', pressStart);
+
+    var hpMinus = document.getElementById('hpMinus');
+    if(hpMinus) hpMinus.addEventListener('click', function(){ adjustHp(-10); });
+    var hpPlus = document.getElementById('hpPlus');
+    if(hpPlus) hpPlus.addEventListener('click', function(){ adjustHp(10); });
 
     var restartBtn = document.getElementById('btnRestart');
     if(restartBtn) restartBtn.addEventListener('click', requestRestart);
