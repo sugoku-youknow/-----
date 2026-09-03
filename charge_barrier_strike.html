@@ -1,0 +1,742 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>ためる・バリア・攻撃</title>
+<style>
+  :root{
+    --bg:#0b0e14;
+    --panel:#12161f;
+    --panel-2:#171c27;
+    --line:#232a38;
+    --text:#e8ecf4;
+    --sub:#8b93a7;
+    --charge:#e8b339;
+    --barrier:#3ec9d6;
+    --attack:#e0435a;
+    --good:#5fd98a;
+  }
+  #app, #app *{ box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  #app{
+    background:var(--bg);
+    color:var(--text);
+    font-family:'Zen Kaku Gothic New','Hiragino Kaku Gothic ProN','Noto Sans JP',sans-serif;
+    min-height:640px;
+    padding:28px 20px 36px;
+    border-radius:14px;
+    position:relative;
+    overflow:hidden;
+  }
+  #app::before{
+    content:'';
+    position:absolute; inset:0;
+    background:
+      radial-gradient(600px 300px at 15% -10%, rgba(232,179,57,0.08), transparent 60%),
+      radial-gradient(600px 300px at 85% 110%, rgba(224,67,90,0.08), transparent 60%);
+    pointer-events:none;
+  }
+  .wrap{ position:relative; max-width:640px; margin:0 auto; }
+  .brand{
+    text-align:center; margin-bottom:22px;
+  }
+  .brand .mark{
+    font-size:11px; letter-spacing:.28em; color:var(--sub); text-transform:uppercase;
+  }
+  .brand h1{
+    margin:6px 0 0; font-size:28px; font-weight:800; letter-spacing:.02em;
+  }
+  .brand h1 .a{color:var(--charge)} .brand h1 .b{color:var(--barrier)} .brand h1 .c{color:var(--attack)}
+
+  .card{
+    background:var(--panel);
+    border:1px solid var(--line);
+    border-radius:12px;
+    padding:22px;
+  }
+  .row{ display:flex; gap:12px; }
+  .btn{
+    flex:1; padding:13px 10px; border-radius:9px; border:1px solid var(--line);
+    background:var(--panel-2); color:var(--text); font-size:15px; font-weight:700;
+    cursor:pointer; transition:transform .12s, border-color .12s, background .12s;
+    letter-spacing:.02em;
+  }
+  .btn:hover:not(:disabled){ transform:translateY(-1px); border-color:#3a4356; }
+  .btn:disabled{ opacity:.35; cursor:not-allowed; }
+  .btn.primary{ background:linear-gradient(135deg,#2a3244,#1b2130); border-color:#3a4356; }
+  input[type=text]{
+    width:100%; padding:12px 14px; border-radius:9px; border:1px solid var(--line);
+    background:var(--panel-2); color:var(--text); font-size:16px; letter-spacing:.08em;
+  }
+  input[type=text]:focus{ outline:none; border-color:#5a6478; }
+  .label{ font-size:12px; color:var(--sub); margin-bottom:6px; letter-spacing:.05em; }
+  .center{ text-align:center; }
+  .muted{ color:var(--sub); font-size:13px; }
+  .code{
+    font-size:34px; font-weight:800; letter-spacing:.22em; text-align:center;
+    padding:16px 0; color:var(--charge);
+  }
+
+  /* --- battle screen --- */
+  .players{ display:flex; flex-direction:column; gap:10px; margin-bottom:18px; }
+  .pcard{ flex:1; background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:14px 16px; }
+  .pcard.me{ border-color:#33405a; }
+  .pname{ font-size:13px; color:var(--sub); display:flex; justify-content:space-between; margin-bottom:8px; }
+  .pname .you{ color:var(--barrier); font-size:11px; letter-spacing:.05em; }
+  .hpbar{ height:10px; border-radius:6px; background:#1d2330; overflow:hidden; border:1px solid var(--line); }
+  .hpfill{ height:100%; background:linear-gradient(90deg,#e0435a,#f2794a); transition:width .5s ease; }
+  .hpnum{ font-size:12px; color:var(--sub); margin-top:5px; text-align:right; }
+  .pips{ display:flex; gap:4px; margin-top:10px; }
+  .pip{ width:16px; height:16px; border-radius:4px; background:#232a38; border:1px solid var(--line); }
+  .pip.on{ background:var(--charge); border-color:var(--charge); box-shadow:0 0 8px rgba(232,179,57,.5); }
+
+  .vs{
+    align-self:center; font-size:11px; color:var(--sub); letter-spacing:.15em;
+    display:flex; align-items:center; gap:10px; width:100%;
+  }
+  .vs::before, .vs::after{ content:''; flex:1; height:1px; background:var(--line); }
+
+  .arena{
+    background:var(--panel); border:1px solid var(--line); border-radius:12px;
+    padding:18px; margin-bottom:14px; min-height:64px;
+  }
+  .arena .msg{ font-size:14px; line-height:1.7; color:var(--text); }
+  .arena .msg b{ color:var(--charge); }
+  .round{ font-size:12px; color:var(--sub); letter-spacing:.08em; margin-bottom:6px; }
+
+  .actions{ display:flex; gap:10px; margin-top:16px; }
+  .abtn{
+    flex:1; padding:16px 8px; border-radius:10px; border:1px solid var(--line);
+    background:var(--panel-2); cursor:pointer; text-align:center;
+    transition:transform .12s, border-color .12s;
+  }
+  .abtn:hover:not(.disabled):not(.picked){ transform:translateY(-2px); }
+  .abtn .ic{ font-size:22px; display:block; margin-bottom:4px; }
+  .abtn .tt{ font-size:13px; font-weight:700; }
+  .abtn .sub{ font-size:10px; color:var(--sub); margin-top:2px; }
+  .abtn.charge{ border-color:#4a4326; } .abtn.charge:hover:not(.disabled):not(.picked){ border-color:var(--charge); }
+  .abtn.barrier{ border-color:#264247; } .abtn.barrier:hover:not(.disabled):not(.picked){ border-color:var(--barrier); }
+  .abtn.attack{ border-color:#472129; } .abtn.attack:hover:not(.disabled):not(.picked){ border-color:var(--attack); }
+  .abtn.picked.charge{ background:rgba(232,179,57,.15); border-color:var(--charge); }
+  .abtn.picked.barrier{ background:rgba(62,201,214,.15); border-color:var(--barrier); }
+  .abtn.picked.attack{ background:rgba(224,67,90,.15); border-color:var(--attack); }
+  .abtn.disabled{ opacity:.3; cursor:not-allowed; }
+
+  .waitline{ text-align:center; font-size:12px; color:var(--sub); margin-top:12px; }
+
+  .reveal-title{ text-align:center; font-size:12px; color:var(--sub); letter-spacing:.1em; margin-top:14px; margin-bottom:10px; }
+  .reveal{ display:flex; align-items:center; justify-content:center; gap:14px; }
+  .reveal-card{
+    flex:1; max-width:150px; text-align:center; padding:16px 8px; border-radius:10px;
+    border:1px solid var(--line); background:var(--panel-2);
+    animation: reveal-pop .28s ease;
+  }
+  .reveal-card .who{ font-size:11px; color:var(--sub); margin-bottom:6px; }
+  .reveal-card .ic{ font-size:26px; display:block; }
+  .reveal-card .tt{ font-size:14px; font-weight:700; display:block; margin-top:4px; }
+  .reveal-card.charge{ border-color:var(--charge); background:rgba(232,179,57,.12); }
+  .reveal-card.barrier{ border-color:var(--barrier); background:rgba(62,201,214,.12); }
+  .reveal-card.attack{ border-color:var(--attack); background:rgba(224,67,90,.12); }
+  .reveal-x{ font-size:16px; color:var(--sub); }
+  @keyframes reveal-pop{ from{ transform:scale(0.85); opacity:0; } to{ transform:scale(1); opacity:1; } }
+
+  /* --- split duel layout --- */
+  #app.mode-duel{ padding:14px; background:transparent; min-height:auto; }
+  #app.mode-duel::before{ display:none; }
+
+  .duel-wrap{
+    display:flex; flex-direction:column;
+    border:3px solid #16202c; border-radius:10px; overflow:hidden;
+  }
+  .duel-half{
+    display:flex; flex-direction:column; align-items:center;
+    padding:18px 16px; gap:10px;
+  }
+  .duel-half.opp{ background:#ffd7dd; }
+  .duel-half.me{ background:#d6f0fb; }
+
+  .namebox, .hpbox-outer, .actionbox{
+    width:100%; max-width:360px;
+    background:#fff; border:2.5px solid #16202c; border-radius:5px;
+    color:#16202c;
+  }
+  .namebox{ padding:10px 14px; text-align:center; font-weight:700; font-size:15px; }
+  .hpbox-outer{ height:24px; position:relative; overflow:hidden; }
+  .hpbox-fill{ height:100%; background:#ffe14d; transition:width .5s ease; }
+  .hpbox-num{ position:absolute; inset:0; display:flex; align-items:center; justify-content:center; font-size:11px; font-weight:800; }
+
+  .actionbox{
+    min-height:64px; display:flex; align-items:center; justify-content:center; gap:8px;
+    font-weight:800; font-size:17px; padding:10px;
+  }
+  .actionbox .ic{ font-size:22px; }
+  .actionbox .ph{ color:#9aa3ad; font-weight:600; font-size:14px; }
+  .actionbox.charge{ background:#fff4d8; }
+  .actionbox.barrier{ background:#dbf7fa; }
+  .actionbox.attack{ background:#fbdde1; }
+
+  .pipsrow{ display:flex; gap:4px; }
+  .pip2{ width:13px; height:13px; border:1.5px solid #16202c; background:#fff; border-radius:2px; }
+  .pip2.on{ background:#ffe14d; }
+
+  .divider2{
+    height:0; border-top:2.5px dashed #16202c;
+  }
+
+  .duel-half .actions{ margin-top:6px; }
+  .duel-half .abtn{
+    background:#fff; border:2px solid #16202c; color:#16202c;
+  }
+  .duel-half .abtn .sub{ display:none; }
+  .duel-half .abtn.charge:hover:not(.disabled):not(.picked){ border-color:#c9971f; }
+  .duel-half .abtn.barrier:hover:not(.disabled):not(.picked){ border-color:#1f8f9c; }
+  .duel-half .abtn.attack:hover:not(.disabled):not(.picked){ border-color:#b8283c; }
+  .duel-half .abtn.picked.charge{ background:#fff0c2; }
+  .duel-half .abtn.picked.barrier{ background:#c8f2f6; }
+  .duel-half .abtn.picked.attack{ background:#fac9d0; }
+
+  .meta-line{ text-align:center; font-size:12px; color:var(--sub); margin-top:12px; line-height:1.6; padding:0 8px; }
+
+  @media (max-width: 480px){
+    #app.mode-duel{ padding:8px; }
+    .duel-half{ padding:14px 10px; gap:8px; }
+    .namebox{ font-size:13px; padding:8px 10px; }
+    .actionbox{ min-height:54px; font-size:15px; }
+    .actionbox .ic{ font-size:19px; }
+    .meta-line{ font-size:11px; }
+  }
+
+  .toast{
+    position:absolute; top:14px; left:50%; transform:translateX(-50%);
+    background:#1c2230; border:1px solid var(--line); padding:8px 16px; border-radius:8px;
+    font-size:12px; color:var(--good);
+  }
+  .footer-actions{ display:flex; justify-content:center; margin-top:16px; }
+  .link{ color:var(--barrier); font-size:12px; cursor:pointer; background:none; border:none; }
+
+  @media (max-width: 480px){
+    #app{ padding:18px 12px 24px; min-height:0; }
+    .brand{ margin-bottom:16px; }
+    .brand h1{ font-size:21px; }
+    .card{ padding:16px; }
+    .players{ gap:8px; }
+    .pcard{ padding:10px 11px; }
+    .pname{ font-size:12px; }
+    .hpnum{ font-size:11px; }
+    .pip{ width:13px; height:13px; }
+    .vs{ font-size:9px; gap:6px; }
+    .arena{ padding:14px; margin-bottom:12px; }
+    .arena .msg{ font-size:13px; }
+    .actions{ gap:7px; }
+    .abtn{ padding:14px 4px; border-radius:9px; }
+    .abtn .ic{ font-size:20px; }
+    .abtn .tt{ font-size:12px; }
+    .abtn .sub{ font-size:9px; }
+    .code{ font-size:28px; letter-spacing:.16em; }
+    .row{ gap:8px; }
+    .btn{ padding:14px 8px; font-size:14px; }
+    input[type=text]{ font-size:16px; padding:12px; } /* 16px prevents iOS auto-zoom */
+  }
+
+  @media (hover: none){
+    .abtn:hover:not(.disabled):not(.picked){ transform:none; }
+    .btn:hover:not(:disabled){ transform:none; }
+    .abtn:active:not(.disabled):not(.picked){ transform:scale(0.97); border-color:#5a6478; }
+    .btn:active:not(:disabled){ transform:scale(0.98); }
+  }
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<script>
+(function(){
+  "use strict";
+
+  var MAX_CHARGE = 5;
+  var BASE_DMG = 20;
+  var BONUS_MULT = 1.5;
+  var START_HP = 100;
+  var ID_PREFIX = 'cbs-duel-';
+
+  var ACTIONS = {
+    charge:  { label:'ためる', icon:'⚡', sub:'次の攻撃を強化', cls:'charge' },
+    barrier: { label:'バリア', icon:'🛡', sub:'攻撃を防ぐ', cls:'barrier' },
+    attack:  { label:'攻撃',   icon:'⚔', sub:'チャージ分を放つ', cls:'attack' },
+  };
+
+  var app = document.getElementById('app');
+
+  var ui = { screen:'home', nameInput:'', codeInput:'', toast:'' };
+
+  var role = null;      // 'host' | 'guest'
+  var peer = null;
+  var conn = null;
+  var state = null;      // authoritative game state (mirrored on guest)
+  var myMove = null;     // for rendering my own picked button
+  var hostPending = { p1:null, p2:null }; // host-side only: pending moves this round
+  var reveal = null; // { p1: move, p2: move } shown while both actions are revealed before resolving
+
+  function randCode(){
+    var chars = 'abcdefghjkmnpqrstuvwxyz23456789';
+    var s = '';
+    for(var i=0;i<2;i++) s += chars[Math.floor(Math.random()*chars.length)];
+    return s;
+  }
+
+  function freshState(hostName, guestName){
+    return {
+      round: 1,
+      status: 'playing',
+      winner: null,
+      players: {
+        p1: { name: hostName || 'Player 1', hp: START_HP, charge:0 },
+        p2: { name: guestName || 'Player 2', hp: START_HP, charge:0 },
+      },
+      log: [{ round:0, text:'バトル開始！' }],
+    };
+  }
+
+  function dmgFrom(charge, bonus){
+    return Math.round(BASE_DMG * Math.max(charge,1) * (bonus?BONUS_MULT:1));
+  }
+
+  function resolveRound(p1, p2, m1, m2){
+    var hp1=p1.hp, hp2=p2.hp, c1=p1.charge, c2=p2.charge;
+    var lines = [];
+
+    if(m1==='charge' && m2==='charge'){
+      c1 = Math.min(MAX_CHARGE, c1+1); c2 = Math.min(MAX_CHARGE, c2+1);
+      lines.push('二人とも「ためる」を選択。両者のチャージが1溜まった。');
+    } else if(m1==='barrier' && m2==='barrier'){
+      lines.push('二人とも「バリア」。何も起こらなかった。');
+    } else if(m1==='charge' && m2==='barrier'){
+      c1 = Math.min(MAX_CHARGE, c1+1);
+      lines.push('P1はチャージ、P2はバリア。P1のチャージが1溜まった。');
+    } else if(m1==='barrier' && m2==='charge'){
+      c2 = Math.min(MAX_CHARGE, c2+1);
+      lines.push('P2はチャージ、P1はバリア。P2のチャージが1溜まった。');
+    } else if(m1==='attack' && m2==='attack'){
+      var d1 = dmgFrom(c1,false), d2 = dmgFrom(c2,false);
+      hp2 = Math.max(0, hp2-d1); hp1 = Math.max(0, hp1-d2);
+      c1=0; c2=0;
+      lines.push('両者「攻撃」が激突！ P1は'+d1+'ダメージ、P2は'+d2+'ダメージを与えた。');
+    } else if(m1==='attack' && m2==='barrier'){
+      lines.push('P1の攻撃はP2の「バリア」に防がれた。');
+      c1=0;
+    } else if(m1==='barrier' && m2==='attack'){
+      lines.push('P2の攻撃はP1の「バリア」に防がれた。');
+      c2=0;
+    } else if(m1==='attack' && m2==='charge'){
+      var d = dmgFrom(c1, true);
+      hp2 = Math.max(0, hp2-d);
+      lines.push('P2が「ためる」の隙をP1が攻撃！ 会心の一撃で'+d+'ダメージ！');
+      c1=0; c2=0;
+    } else if(m1==='charge' && m2==='attack'){
+      var d2b = dmgFrom(c2, true);
+      hp1 = Math.max(0, hp1-d2b);
+      lines.push('P1が「ためる」の隙をP2が攻撃！ 会心の一撃で'+d2b+'ダメージ！');
+      c1=0; c2=0;
+    }
+
+    return { hp1:hp1, hp2:hp2, c1:c1, c2:c2, text: lines.join(' ') };
+  }
+
+  function showToast(msg, ms){
+    ui.toast = msg;
+    render();
+    setTimeout(function(){ ui.toast=''; render(); }, ms || 2500);
+  }
+
+  function esc(s){
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){
+      return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
+    });
+  }
+
+  // ---------- navigation ----------
+  function goHome(){ ui.screen='home'; render(); }
+  function goCreate(){ ui.screen='create'; render(); }
+  function goJoin(){ ui.screen='join'; render(); }
+
+  // ---------- host ----------
+  function createRoom(){
+    if(typeof Peer === 'undefined'){
+      showToast('通信ライブラリの読み込みに失敗しました。回線を確認して再読み込みしてください', 4000);
+      return;
+    }
+    var code = randCode();
+    role = 'host';
+    ui.screen = 'creating';
+    render();
+
+    peer = new Peer(ID_PREFIX + code);
+
+    peer.on('open', function(){
+      ui.roomCode = code;
+      ui.screen = 'battle-wait';
+      render();
+    });
+
+    peer.on('connection', function(c){
+      conn = c;
+      conn.on('open', function(){ /* wait for join message */ });
+      conn.on('data', function(msg){ handleHostData(msg); });
+      conn.on('close', function(){
+        showToast('相手との接続が切れました', 3000);
+      });
+    });
+
+    peer.on('error', function(err){
+      console.error(err);
+      showToast('接続エラーが発生しました(' + err.type + ')。もう一度お試しください', 4000);
+      ui.screen = 'create';
+      render();
+    });
+  }
+
+  function handleHostData(msg){
+    if(msg.type === 'join'){
+      state = freshState(ui.nameInput.trim() || 'Player 1', msg.name || 'Player 2');
+      hostPending = { p1:null, p2:null };
+      ui.screen = 'battle';
+      render();
+      conn.send({ type:'state', state: state });
+      return;
+    }
+    if(msg.type === 'move'){
+      if(msg.round !== state.round) return;
+      hostPending.p2 = msg.move;
+      tryResolveHost();
+      return;
+    }
+    if(msg.type === 'restart-request'){
+      doRestart();
+      return;
+    }
+  }
+
+  function tryResolveHost(){
+    if(!hostPending.p1 || !hostPending.p2) { render(); return; }
+    var m1 = hostPending.p1, m2 = hostPending.p2;
+    reveal = { p1: m1, p2: m2 };
+    if(conn){ conn.send({ type:'reveal', reveal: reveal }); }
+    render();
+    setTimeout(function(){ finishResolveHost(m1, m2); }, 1400);
+  }
+
+  function finishResolveHost(m1, m2){
+    var res = resolveRound(state.players.p1, state.players.p2, m1, m2);
+    state.players.p1.hp = res.hp1; state.players.p1.charge = res.c1;
+    state.players.p2.hp = res.hp2; state.players.p2.charge = res.c2;
+    state.log = state.log.concat([{ round: state.round, text: res.text }]);
+    if(res.hp1<=0 || res.hp2<=0){
+      state.status = 'finished';
+      state.winner = (res.hp1<=0 && res.hp2<=0) ? 'draw' : (res.hp1<=0 ? 'p2' : 'p1');
+    } else {
+      state.round = state.round + 1;
+    }
+    hostPending = { p1:null, p2:null };
+    reveal = null;
+    myMove = null;
+    if(conn){ conn.send({ type:'state', state: state }); }
+    render();
+  }
+
+  function doRestart(){
+    var hostName = state.players.p1.name, guestName = state.players.p2.name;
+    state = freshState(hostName, guestName);
+    hostPending = { p1:null, p2:null };
+    reveal = null;
+    myMove = null;
+    if(conn){ conn.send({ type:'state', state: state }); }
+    render();
+  }
+
+  // ---------- guest ----------
+  function joinRoom(){
+    if(typeof Peer === 'undefined'){
+      showToast('通信ライブラリの読み込みに失敗しました。回線を確認して再読み込みしてください', 4000);
+      return;
+    }
+    var code = ui.codeInput.trim().toLowerCase();
+    if(!code){ showToast('部屋コードを入力してください'); return; }
+
+    role = 'guest';
+    ui.screen = 'joining';
+    render();
+
+    peer = new Peer();
+
+    peer.on('open', function(){
+      conn = peer.connect(ID_PREFIX + code, { reliable:true });
+
+      conn.on('open', function(){
+        conn.send({ type:'join', name: ui.nameInput.trim() || 'Player 2' });
+      });
+      conn.on('data', function(msg){ handleGuestData(msg); });
+      conn.on('close', function(){
+        showToast('相手との接続が切れました', 3000);
+      });
+      conn.on('error', function(err){
+        console.error(err);
+        showToast('接続に失敗しました。コードを確認してください', 3500);
+        ui.screen = 'join';
+        render();
+      });
+    });
+
+    peer.on('error', function(err){
+      console.error(err);
+      var msg = (err.type === 'peer-unavailable')
+        ? '部屋が見つかりません。コードをご確認ください'
+        : '接続エラーが発生しました(' + err.type + ')';
+      showToast(msg, 4000);
+      ui.screen = 'join';
+      render();
+    });
+  }
+
+  function handleGuestData(msg){
+    if(msg.type === 'reveal'){
+      reveal = msg.reveal;
+      render();
+      return;
+    }
+    if(msg.type === 'state'){
+      state = msg.state;
+      reveal = null;
+      myMove = null;
+      ui.screen = 'battle';
+      render();
+    }
+  }
+
+  // ---------- shared ----------
+  function pickMove(move){
+    if(!state || state.status !== 'playing' || myMove) return;
+    var myKey = role === 'host' ? 'p1' : 'p2';
+    var me = state.players[myKey];
+    if(move === 'attack' && me.charge <= 0) return;
+    myMove = move;
+
+    if(role === 'host'){
+      hostPending.p1 = move;
+      tryResolveHost();
+    } else {
+      conn.send({ type:'move', round: state.round, move: move });
+      render();
+    }
+  }
+
+  function requestRestart(){
+    if(role === 'host'){
+      doRestart();
+    } else {
+      conn.send({ type:'restart-request' });
+      showToast('再戦をリクエストしました', 1800);
+    }
+  }
+
+  function copyCode(){
+    var text = ui.roomCode;
+    if(navigator.clipboard && navigator.clipboard.writeText){
+      navigator.clipboard.writeText(text).then(function(){
+        showToast('コードをコピーしました', 1800);
+      }).catch(function(){ showToast(text, 2500); });
+    } else {
+      showToast(text, 2500);
+    }
+  }
+
+  // ---------- render ----------
+  function render(){
+    app.classList.remove('mode-duel');
+    if(ui.screen === 'home'){
+      app.innerHTML =
+        (ui.toast ? '<div class="toast">'+esc(ui.toast)+'</div>' : '') +
+        '<div class="wrap">' +
+          '<div class="brand">' +
+            '<div class="mark">3-way duel</div>' +
+            '<h1><span class="a">ためる</span> / <span class="b">バリア</span> / <span class="c">攻撃</span></h1>' +
+          '</div>' +
+          '<div class="card">' +
+            '<div class="label">プレイヤー名</div>' +
+            '<input type="text" id="nameField" placeholder="名前を入力" maxlength="12" value="'+esc(ui.nameInput)+'" />' +
+            '<div style="height:16px"></div>' +
+            '<div class="row">' +
+              '<button class="btn primary" id="btnCreate">部屋を作る</button>' +
+              '<button class="btn primary" id="btnJoin">部屋に入る</button>' +
+            '</div>' +
+          '</div>' +
+        '</div>';
+      document.getElementById('nameField').addEventListener('input', function(e){ ui.nameInput = e.target.value; });
+      document.getElementById('btnCreate').addEventListener('click', goCreate);
+      document.getElementById('btnJoin').addEventListener('click', goJoin);
+      return;
+    }
+
+    if(ui.screen === 'create'){
+      app.innerHTML =
+        (ui.toast ? '<div class="toast">'+esc(ui.toast)+'</div>' : '') +
+        '<div class="wrap">' +
+          '<div class="brand"><div class="mark">host</div><h1>部屋を作成</h1></div>' +
+          '<div class="card center">' +
+            '<p class="muted">「作成」を押すと部屋コードが発行されます。友人にコードを共有してください。</p>' +
+            '<div class="row" style="margin-top:16px">' +
+              '<button class="btn" id="btnBack">戻る</button>' +
+              '<button class="btn primary" id="btnGo">作成する</button>' +
+            '</div>' +
+          '</div>' +
+        '</div>';
+      document.getElementById('btnBack').addEventListener('click', goHome);
+      document.getElementById('btnGo').addEventListener('click', createRoom);
+      return;
+    }
+
+    if(ui.screen === 'creating'){
+      app.innerHTML =
+        '<div class="wrap"><div class="card center"><p class="muted">部屋を準備しています…</p></div></div>';
+      return;
+    }
+
+    if(ui.screen === 'battle-wait'){
+      app.innerHTML =
+        (ui.toast ? '<div class="toast">'+esc(ui.toast)+'</div>' : '') +
+        '<div class="wrap">' +
+          '<div class="brand"><div class="mark">waiting</div><h1>相手を待っています</h1></div>' +
+          '<div class="card center">' +
+            '<div class="code">' + esc(ui.roomCode) + '</div>' +
+            '<p class="muted">このコードを友人に共有してください。参加すると自動でバトルが始まります。</p>' +
+            '<div class="footer-actions"><button class="link" id="btnCopy">コードをコピー</button></div>' +
+          '</div>' +
+        '</div>';
+      document.getElementById('btnCopy').addEventListener('click', copyCode);
+      return;
+    }
+
+    if(ui.screen === 'join'){
+      app.innerHTML =
+        (ui.toast ? '<div class="toast">'+esc(ui.toast)+'</div>' : '') +
+        '<div class="wrap">' +
+          '<div class="brand"><div class="mark">guest</div><h1>部屋に入る</h1></div>' +
+          '<div class="card">' +
+            '<div class="label">部屋コード</div>' +
+            '<input type="text" id="codeField" placeholder="例: a1" maxlength="2" value="'+esc(ui.codeInput)+'" style="text-align:center;letter-spacing:.3em;font-size:20px" />' +
+            '<div class="row" style="margin-top:16px">' +
+              '<button class="btn" id="btnBack">戻る</button>' +
+              '<button class="btn primary" id="btnGo">参加する</button>' +
+            '</div>' +
+          '</div>' +
+        '</div>';
+      document.getElementById('codeField').addEventListener('input', function(e){ ui.codeInput = e.target.value.toLowerCase(); });
+      document.getElementById('btnBack').addEventListener('click', goHome);
+      document.getElementById('btnGo').addEventListener('click', joinRoom);
+      return;
+    }
+
+    if(ui.screen === 'joining'){
+      app.innerHTML =
+        (ui.toast ? '<div class="toast">'+esc(ui.toast)+'</div>' : '') +
+        '<div class="wrap"><div class="card center"><p class="muted">接続しています…</p></div></div>';
+      return;
+    }
+
+    // battle
+    if(!state){
+      app.innerHTML = '<div class="wrap center muted">読み込み中…</div>';
+      return;
+    }
+
+    var myKey = role === 'host' ? 'p1' : 'p2';
+    var oppKey = role === 'host' ? 'p2' : 'p1';
+    var me = state.players[myKey];
+    var opp = state.players[oppKey];
+    var lastLog = state.log[state.log.length-1];
+
+    app.classList.add('mode-duel');
+
+    // action box contents (mirrors around the divider)
+    var oppActionHtml, myActionHtml;
+    if(reveal){
+      var oa = ACTIONS[reveal[oppKey]], ma = ACTIONS[reveal[myKey]];
+      oppActionHtml = '<span class="ic">'+oa.icon+'</span><span class="tt">'+oa.label+'</span>';
+      myActionHtml  = '<span class="ic">'+ma.icon+'</span><span class="tt">'+ma.label+'</span>';
+    } else {
+      oppActionHtml = '<span class="ph">？</span>';
+      if(myMove){
+        var pa = ACTIONS[myMove];
+        myActionHtml = '<span class="ic">'+pa.icon+'</span><span class="tt">'+pa.label+'</span>';
+      } else {
+        myActionHtml = '<span class="ph">未選択</span>';
+      }
+    }
+
+    var html = (ui.toast ? '<div class="toast">'+esc(ui.toast)+'</div>' : '') +
+      '<div class="duel-wrap">' +
+        '<div class="duel-half opp">' +
+          '<div class="namebox">'+esc(opp.name)+'</div>' +
+          '<div class="hpbox-outer"><div class="hpbox-fill" style="width:'+opp.hp+'%"></div><div class="hpbox-num">'+opp.hp+' / 100</div></div>' +
+          '<div class="pipsrow">' + pipsHtml(opp.charge) + '</div>' +
+          '<div class="actionbox '+(reveal?ACTIONS[reveal[oppKey]].cls:'')+'">' + oppActionHtml + '</div>' +
+        '</div>' +
+        '<div class="divider2"></div>' +
+        '<div class="duel-half me">' +
+          '<div class="actionbox '+(reveal?ACTIONS[reveal[myKey]].cls:(myMove?ACTIONS[myMove].cls:''))+'">' + myActionHtml + '</div>' +
+          '<div class="pipsrow">' + pipsHtml(me.charge) + '</div>' +
+          '<div class="hpbox-outer"><div class="hpbox-fill" style="width:'+me.hp+'%"></div><div class="hpbox-num">'+me.hp+' / 100</div></div>' +
+          '<div class="namebox">'+esc(me.name)+'</div>';
+
+    if(state.status === 'playing' && !reveal){
+      html += '<div class="actions">';
+      Object.keys(ACTIONS).forEach(function(key){
+        var a = ACTIONS[key];
+        var disabled = (key==='attack' && me.charge<=0) || !!myMove;
+        var picked = myMove === key;
+        html += '<div class="abtn '+a.cls+' '+(disabled && !picked ? 'disabled':'')+' '+(picked?'picked':'')+'" data-move="'+key+'">' +
+          '<span class="ic">'+a.icon+'</span>' +
+          '<span class="tt">'+a.label+'</span>' +
+        '</div>';
+      });
+      html += '</div>';
+    }
+
+    html += '</div></div>'; // .duel-half.me, .duel-wrap
+
+    html += '<div class="meta-line">ROUND ' + state.round + (lastLog ? ' ・ ' + esc(lastLog.text) : '') + '</div>';
+
+    if(state.status === 'finished'){
+      var title = state.winner === 'draw' ? '引き分け！' : (state.winner === myKey ? 'あなたの勝利！' : 'あなたの敗北…');
+      html += '<div class="card center">' +
+        '<h2 style="margin:0 0 8px">' + title + '</h2>' +
+        '<button class="btn primary" id="btnRestart" style="margin-top:8px">もう一度対戦する</button>' +
+      '</div>';
+    }
+
+    app.innerHTML = html;
+
+    var restartBtn = document.getElementById('btnRestart');
+    if(restartBtn) restartBtn.addEventListener('click', requestRestart);
+
+    var abtns = app.querySelectorAll('.abtn');
+    abtns.forEach(function(el){
+      el.addEventListener('click', function(){
+        if(el.classList.contains('disabled')) return;
+        pickMove(el.getAttribute('data-move'));
+      });
+    });
+  }
+
+  function pipsHtml(charge){
+    var out = '';
+    for(var i=0;i<MAX_CHARGE;i++){
+      out += '<div class="pip2 ' + (i<charge?'on':'') + '"></div>';
+    }
+    return out;
+  }
+
+  render();
+})();
+</script>
+</body>
+</html>
