@@ -308,14 +308,37 @@
     if(roundTimeout){ clearTimeout(roundTimeout); roundTimeout = null; }
   }
 
+  // ラウンドの終了時刻はstateで共有する。
+  // これにより、render()で画面を描き直してもタイマーバーが1秒地点に戻らない。
   function startRoundTimer(){
     clearRoundTimer();
-    roundTimeout = setTimeout(function(){
-      roundTimeout = null;
-      if(state && state.status === 'playing' && !reveal && !myMove){
-        pickMove('barrier');
-      }
-    }, TURN_MS);
+
+    if(!state || state.status !== 'playing') return;
+
+    // ホストだけが新しいラウンドの終了時刻を決める。
+    // ゲストは受信したstate.roundEndsAtをそのまま使う。
+    if(!state.roundEndsAt){
+      state.roundEndsAt = Date.now() + TURN_MS;
+    }
+
+    var remaining = Math.max(0, state.roundEndsAt - Date.now());
+
+    if(remaining <= 0){
+      roundTimeout = setTimeout(function(){
+        roundTimeout = null;
+        if(state && state.status === 'playing' && !reveal && !myMove){
+          pickMove('barrier');
+        }
+      }, 0);
+    } else {
+      roundTimeout = setTimeout(function(){
+        roundTimeout = null;
+        if(state && state.status === 'playing' && !reveal && !myMove){
+          pickMove('barrier');
+        }
+      }, remaining);
+    }
+
     animateTimerBar();
   }
 
@@ -323,11 +346,27 @@
     requestAnimationFrame(function(){
       var bar = document.getElementById('timerbar');
       if(!bar) return;
+
+      var remaining = state && state.roundEndsAt
+        ? Math.max(0, state.roundEndsAt - Date.now())
+        : TURN_MS;
+
+      var percent = Math.max(0, Math.min(100, remaining / TURN_MS * 100));
+
+      // 現在残っている位置から0%まで動かす。
+      // render()後も100%には戻さない。
       bar.style.transition = 'none';
-      bar.style.width = '100%';
-      void bar.offsetWidth; // force reflow
-      bar.style.transition = 'width ' + TURN_MS + 'ms linear';
-      requestAnimationFrame(function(){ bar.style.width = '0%'; });
+      bar.style.width = percent + '%';
+      void bar.offsetWidth;
+      bar.style.transition = 'width ' + remaining + 'ms linear';
+
+      requestAnimationFrame(function(){
+        if(bar && state && state.roundEndsAt){
+          var latestRemaining = Math.max(0, state.roundEndsAt - Date.now());
+          bar.style.transition = 'width ' + latestRemaining + 'ms linear';
+          bar.style.width = '0%';
+        }
+      });
     });
   }
 
@@ -343,6 +382,7 @@
     return {
       round: 1,
       status: 'ready',
+      roundEndsAt: null,
       winner: null,
       ready: { p1:false, p2:false },
       hpSetting: hp,
@@ -483,6 +523,8 @@
   function checkReadyStart(){
     if(state.status === 'ready' && state.ready.p1 && state.ready.p2){
       state.status = 'playing';
+      // ホストがラウンド開始時刻を確定する。
+      state.roundEndsAt = Date.now() + TURN_MS;
       startRoundTimer();
     }
   }
@@ -507,6 +549,8 @@
       state.winner = (res.hp1<=0 && res.hp2<=0) ? 'draw' : (res.hp1<=0 ? 'p2' : 'p1');
     } else {
       state.round = state.round + 1;
+      // 次ラウンドの1秒をホスト基準で開始し、その終了時刻をゲストへ共有する。
+      state.roundEndsAt = Date.now() + TURN_MS;
     }
     hostPending = { p1:null, p2:null };
     reveal = null;
@@ -864,7 +908,6 @@
       });
     });
 
-    if(showTimerBar){ animateTimerBar(); }
   }
 
   function pipsHtml(charge){
