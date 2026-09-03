@@ -124,6 +124,7 @@
   .abtn.disabled{ opacity:.3; cursor:not-allowed; }
 
   .waitline{ text-align:center; font-size:12px; color:var(--sub); margin-top:12px; }
+  .timer-line{ text-align:center; font-size:13px; color:#16202c; font-weight:800; margin-bottom:6px; }
 
   .reveal-title{ text-align:center; font-size:12px; color:var(--sub); letter-spacing:.1em; margin-top:14px; margin-bottom:10px; }
   .reveal{ display:flex; align-items:center; justify-content:center; gap:14px; }
@@ -256,15 +257,16 @@
   "use strict";
 
   var MAX_CHARGE = 10;
-  var BASE_DMG = 20;
+  var BASE_DMG = 50;
   var BONUS_MULT = 1.5;
   var START_HP = 100;
   var ID_PREFIX = 'cbs-duel-';
+  var TURN_MS = 2000;
 
   var ACTIONS = {
     charge:  { label:'ためる', icon:'⚡', sub:'次の攻撃を強化', cls:'charge' },
     barrier: { label:'バリア', icon:'🛡', sub:'攻撃を防ぐ', cls:'barrier' },
-    attack:  { label:'攻撃',   icon:'⚔', sub:'チャージ分を放つ', cls:'attack' },
+    attack:  { label:'攻撃',   icon:'⚔', sub:'チャージを1消費', cls:'attack' },
   };
 
   var app = document.getElementById('app');
@@ -278,6 +280,29 @@
   var myMove = null;     // for rendering my own picked button
   var hostPending = { p1:null, p2:null }; // host-side only: pending moves this round
   var reveal = null; // { p1: move, p2: move } shown while both actions are revealed before resolving
+
+  var timeLeft = 2;
+  var timeLeftInterval = null;
+
+  function clearRoundTimer(){
+    if(timeLeftInterval){ clearInterval(timeLeftInterval); timeLeftInterval = null; }
+  }
+
+  function startRoundTimer(){
+    clearRoundTimer();
+    timeLeft = Math.round(TURN_MS/1000);
+    timeLeftInterval = setInterval(function(){
+      timeLeft -= 1;
+      if(timeLeft <= 0){
+        clearRoundTimer();
+        if(state && state.status === 'playing' && !reveal && !myMove){
+          pickMove('barrier');
+        }
+      } else {
+        render();
+      }
+    }, 1000);
+  }
 
   function randCode(){
     var chars = 'abcdefghjkmnpqrstuvwxyz23456789';
@@ -299,46 +324,49 @@
     };
   }
 
-  function dmgFrom(charge, bonus){
-    return Math.round(BASE_DMG * Math.max(charge,1) * (bonus?BONUS_MULT:1));
-  }
-
   function resolveRound(p1, p2, m1, m2){
     var hp1=p1.hp, hp2=p2.hp, c1=p1.charge, c2=p2.charge;
     var lines = [];
 
+    // 自分のチャージは自分の行動でのみ増減する(相手の攻撃を受けても減らない)
+    if(m1==='charge'){ c1 = Math.min(MAX_CHARGE, c1+1); }
+    else if(m1==='attack'){ c1 = Math.max(0, c1-1); }
+    if(m2==='charge'){ c2 = Math.min(MAX_CHARGE, c2+1); }
+    else if(m2==='attack'){ c2 = Math.max(0, c2-1); }
+
+    // ダメージは一律50。バリアで0、相手が「ためる」中なら1.5倍(会心)
+    var dmg1to2 = 0, dmg2to1 = 0;
+    if(m1==='attack'){
+      if(m2==='barrier'){ dmg1to2 = 0; }
+      else if(m2==='charge'){ dmg1to2 = Math.round(BASE_DMG*BONUS_MULT); }
+      else { dmg1to2 = BASE_DMG; }
+    }
+    if(m2==='attack'){
+      if(m1==='barrier'){ dmg2to1 = 0; }
+      else if(m1==='charge'){ dmg2to1 = Math.round(BASE_DMG*BONUS_MULT); }
+      else { dmg2to1 = BASE_DMG; }
+    }
+    hp2 = Math.max(0, hp2-dmg1to2);
+    hp1 = Math.max(0, hp1-dmg2to1);
+
     if(m1==='charge' && m2==='charge'){
-      c1 = Math.min(MAX_CHARGE, c1+1); c2 = Math.min(MAX_CHARGE, c2+1);
       lines.push('二人とも「ためる」を選択。両者のチャージが1溜まった。');
     } else if(m1==='barrier' && m2==='barrier'){
       lines.push('二人とも「バリア」。何も起こらなかった。');
     } else if(m1==='charge' && m2==='barrier'){
-      c1 = Math.min(MAX_CHARGE, c1+1);
       lines.push('P1はチャージ、P2はバリア。P1のチャージが1溜まった。');
     } else if(m1==='barrier' && m2==='charge'){
-      c2 = Math.min(MAX_CHARGE, c2+1);
       lines.push('P2はチャージ、P1はバリア。P2のチャージが1溜まった。');
     } else if(m1==='attack' && m2==='attack'){
-      var d1 = dmgFrom(c1,false), d2 = dmgFrom(c2,false);
-      hp2 = Math.max(0, hp2-d1); hp1 = Math.max(0, hp1-d2);
-      c1=0; c2=0;
-      lines.push('両者「攻撃」が激突！ P1は'+d1+'ダメージ、P2は'+d2+'ダメージを与えた。');
+      lines.push('両者「攻撃」が激突！ 双方に'+BASE_DMG+'ダメージ。');
     } else if(m1==='attack' && m2==='barrier'){
       lines.push('P1の攻撃はP2の「バリア」に防がれた。');
-      c1=0;
     } else if(m1==='barrier' && m2==='attack'){
       lines.push('P2の攻撃はP1の「バリア」に防がれた。');
-      c2=0;
     } else if(m1==='attack' && m2==='charge'){
-      var d = dmgFrom(c1, true);
-      hp2 = Math.max(0, hp2-d);
-      lines.push('P2が「ためる」の隙をP1が攻撃！ 会心の一撃で'+d+'ダメージ！');
-      c1=0; c2=0;
+      lines.push('P2が「ためる」の隙をP1が攻撃！ 会心の一撃で'+dmg1to2+'ダメージ！');
     } else if(m1==='charge' && m2==='attack'){
-      var d2b = dmgFrom(c2, true);
-      hp1 = Math.max(0, hp1-d2b);
-      lines.push('P1が「ためる」の隙をP2が攻撃！ 会心の一撃で'+d2b+'ダメージ！');
-      c1=0; c2=0;
+      lines.push('P1が「ためる」の隙をP2が攻撃！ 会心の一撃で'+dmg2to1+'ダメージ！');
     }
 
     return { hp1:hp1, hp2:hp2, c1:c1, c2:c2, text: lines.join(' ') };
@@ -403,6 +431,7 @@
       hostPending = { p1:null, p2:null };
       ui.screen = 'battle';
       render();
+      startRoundTimer();
       conn.send({ type:'state', state: state });
       return;
     }
@@ -420,6 +449,7 @@
 
   function tryResolveHost(){
     if(!hostPending.p1 || !hostPending.p2) { render(); return; }
+    clearRoundTimer();
     var m1 = hostPending.p1, m2 = hostPending.p2;
     reveal = { p1: m1, p2: m2 };
     if(conn){ conn.send({ type:'reveal', reveal: reveal }); }
@@ -443,6 +473,7 @@
     myMove = null;
     if(conn){ conn.send({ type:'state', state: state }); }
     render();
+    if(state.status === 'playing'){ startRoundTimer(); }
   }
 
   function doRestart(){
@@ -453,6 +484,7 @@
     myMove = null;
     if(conn){ conn.send({ type:'state', state: state }); }
     render();
+    startRoundTimer();
   }
 
   // ---------- guest ----------
@@ -501,6 +533,7 @@
 
   function handleGuestData(msg){
     if(msg.type === 'reveal'){
+      clearRoundTimer();
       reveal = msg.reveal;
       render();
       return;
@@ -511,6 +544,7 @@
       myMove = null;
       ui.screen = 'battle';
       render();
+      if(state.status === 'playing'){ startRoundTimer(); } else { clearRoundTimer(); }
     }
   }
 
@@ -520,6 +554,7 @@
     var myKey = role === 'host' ? 'p1' : 'p2';
     var me = state.players[myKey];
     if(move === 'attack' && me.charge <= 0) return;
+    clearRoundTimer();
     myMove = move;
 
     if(role === 'host'){
@@ -690,6 +725,9 @@
           '<div class="namebox">'+esc(me.name)+'</div>';
 
     if(state.status === 'playing' && !reveal){
+      if(!myMove){
+        html += '<div class="timer-line">⏱ 残り ' + timeLeft + ' 秒</div>';
+      }
       html += '<div class="actions">';
       Object.keys(ACTIONS).forEach(function(key){
         var a = ACTIONS[key];
