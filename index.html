@@ -280,7 +280,6 @@
 
   var MAX_CHARGE = 10;
   var BASE_DMG = 10;
-  var BONUS_MULT = 1.5;
   var START_HP = 20;
   var ID_PREFIX = 'cbs-duel-';
   var TURN_MS = 1000;
@@ -365,17 +364,13 @@
     if(m2==='charge'){ c2 = Math.min(MAX_CHARGE, c2+1); }
     else if(m2==='attack'){ c2 = Math.max(0, c2-1); }
 
-    // ダメージは一律50。バリアで0、相手が「ためる」中なら1.5倍(会心)
+    // ダメージは常に一律10。バリアで防いだ時と、攻撃同士がぶつかった時は0(相殺)。
     var dmg1to2 = 0, dmg2to1 = 0;
-    if(m1==='attack'){
-      if(m2==='barrier'){ dmg1to2 = 0; }
-      else if(m2==='charge'){ dmg1to2 = Math.round(BASE_DMG*BONUS_MULT); }
-      else { dmg1to2 = BASE_DMG; }
+    if(m1==='attack' && m2!=='attack'){
+      dmg1to2 = (m2==='barrier') ? 0 : BASE_DMG;
     }
-    if(m2==='attack'){
-      if(m1==='barrier'){ dmg2to1 = 0; }
-      else if(m1==='charge'){ dmg2to1 = Math.round(BASE_DMG*BONUS_MULT); }
-      else { dmg2to1 = BASE_DMG; }
+    if(m2==='attack' && m1!=='attack'){
+      dmg2to1 = (m1==='barrier') ? 0 : BASE_DMG;
     }
     hp2 = Math.max(0, hp2-dmg1to2);
     hp1 = Math.max(0, hp1-dmg2to1);
@@ -389,15 +384,15 @@
     } else if(m1==='barrier' && m2==='charge'){
       lines.push('P2はチャージ、P1はバリア。P2のチャージが1溜まった。');
     } else if(m1==='attack' && m2==='attack'){
-      lines.push('両者「攻撃」が激突！ 双方に'+BASE_DMG+'ダメージ。');
+      lines.push('両者「攻撃」が激突！ 相殺してダメージなし。');
     } else if(m1==='attack' && m2==='barrier'){
       lines.push('P1の攻撃はP2の「バリア」に防がれた。');
     } else if(m1==='barrier' && m2==='attack'){
       lines.push('P2の攻撃はP1の「バリア」に防がれた。');
     } else if(m1==='attack' && m2==='charge'){
-      lines.push('P2が「ためる」の隙をP1が攻撃！ 会心の一撃で'+dmg1to2+'ダメージ！');
+      lines.push('P2が「ためる」の隙をP1が攻撃！ '+dmg1to2+'ダメージ！');
     } else if(m1==='charge' && m2==='attack'){
-      lines.push('P1が「ためる」の隙をP2が攻撃！ 会心の一撃で'+dmg2to1+'ダメージ！');
+      lines.push('P1が「ためる」の隙をP2が攻撃！ '+dmg2to1+'ダメージ！');
     }
 
     return { hp1:hp1, hp2:hp2, c1:c1, c2:c2, text: lines.join(' ') };
