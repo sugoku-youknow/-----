@@ -309,9 +309,51 @@
     if(roundTimeout){ clearTimeout(roundTimeout); roundTimeout = null; }
   }
 
+  function stopTimerBarAnimation(){
+    if(timerFrame !== null){
+      cancelAnimationFrame(timerFrame);
+      timerFrame = null;
+    }
+  }
+
+  // ラウンドの終了時刻はstateで共有する。
+  // これにより、render()で画面を描き直してもタイマーバーが1秒地点に戻らない。
+  function startRoundTimer(){
+    clearRoundTimer();
+
+    if(!state || state.status !== 'playing') return;
+
+    // ホストだけが新しいラウンドの終了時刻を決める。
+    // ゲストは受信したstate.roundEndsAtをそのまま使う。
+    if(!state.roundEndsAt){
+      state.roundEndsAt = Date.now() + TURN_MS;
+    }
+
+    var remaining = Math.max(0, state.roundEndsAt - Date.now());
+
+    if(remaining <= 0){
+      roundTimeout = setTimeout(function(){
+        roundTimeout = null;
+        if(state && state.status === 'playing' && !reveal && !myMove){
+          pickMove('barrier');
+        }
+      }, 0);
+    } else {
+      roundTimeout = setTimeout(function(){
+        roundTimeout = null;
+        if(state && state.status === 'playing' && !reveal && !myMove){
+          pickMove('barrier');
+        }
+      }, remaining);
+    }
+
+    animateTimerBar();
+  }
+
   function getTimerPercent(){
     if(!state || state.status !== 'playing' || !state.roundEndsAt) return 0;
-    return Math.max(0, Math.min(100, (state.roundEndsAt - Date.now()) / TURN_MS * 100));
+    var remaining = Math.max(0, state.roundEndsAt - Date.now());
+    return Math.max(0, Math.min(100, remaining / TURN_MS * 100));
   }
 
   function updateTimerBar(){
@@ -321,23 +363,9 @@
     bar.style.width = getTimerPercent() + '%';
   }
 
-  function startRoundTimer(){
-    clearRoundTimer();
-    if(!state || state.status !== 'playing') return;
-
-    var remaining = Math.max(0, state.roundEndsAt - Date.now());
-    roundTimeout = setTimeout(function(){
-      roundTimeout = null;
-      if(state && state.status === 'playing' && !reveal && !myMove){
-        pickMove('barrier');
-      }
-    }, remaining);
-    animateTimerBar();
-  }
-
   function animateTimerBar(){
-    // render()で画面全体が再描画されても、タイマー自体は再スタートさせない。
-    // roundEndsAtを基準に現在位置を毎フレーム計算する。
+    // render()でタイムバーのDOMが作り直されても、アニメーション自体は
+    // 再スタートしない。ラウンド終了時刻を唯一の基準にする。
     if(timerFrame !== null) return;
 
     function tick(){
@@ -347,25 +375,18 @@
         return;
       }
 
-      var remaining = Math.max(0, state.roundEndsAt - Date.now());
+      var percent = getTimerPercent();
       bar.style.transition = 'none';
-      bar.style.width = Math.max(0, Math.min(100, remaining / TURN_MS * 100)) + '%';
+      bar.style.width = percent + '%';
 
-      if(remaining <= 0){
+      if(percent <= 0){
         timerFrame = null;
         return;
       }
       timerFrame = requestAnimationFrame(tick);
     }
 
-    timerFrame = requestAnimationFrame(tick);
-  }
-
-  function stopTimerBarAnimation(){
-    if(timerFrame !== null){
-      cancelAnimationFrame(timerFrame);
-      timerFrame = null;
-    }
+    tick();
   }
 
   function randCode(){
@@ -892,8 +913,7 @@
 
     app.innerHTML = html;
 
-    // render()でtimerbarのDOMが作り直されるため、
-    // 現在のroundEndsAtから残り時間を計算して同じ位置から再開する。
+    // render()でDOMが作り直されても、同じラウンドの時刻をそのまま使う。
     if(showTimerBar){
       updateTimerBar();
       animateTimerBar();
