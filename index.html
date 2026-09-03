@@ -305,6 +305,10 @@
   var roundTimeout = null;
   var timerFrame = null;
   var roundClosed = false; // ホスト基準の1秒が終了したか
+  var hostClockOffset = 0; // guest: host時刻 - 自分の時刻
+  var clockSyncReady = false;
+  var clockSyncPending = null;
+  var ROUND_START_LEAD_MS = 500; // stateが届く時間を確保してから全員同時に開始
 
   function clearRoundTimer(){
     if(roundTimeout){ clearTimeout(roundTimeout); roundTimeout = null; }
@@ -330,7 +334,8 @@
     }
 
     roundClosed = false;
-    var remaining = Math.max(0, state.roundEndsAt - Date.now());
+    var now = role === 'guest' ? Date.now() + hostClockOffset : Date.now();
+    var remaining = Math.max(0, state.roundEndsAt - now);
     roundTimeout = setTimeout(function(){
       roundTimeout = null;
       handleRoundDeadline();
@@ -378,8 +383,12 @@
 
   function getTimerPercent(){
     if(!state || state.status !== 'playing' || !state.roundEndsAt) return 0;
-    var remaining = Math.max(0, state.roundEndsAt - Date.now());
-    return Math.max(0, Math.min(100, remaining / TURN_MS * 100));
+    if(role === 'guest' && !clockSyncReady) return 100;
+    var now = role === 'guest' ? Date.now() + hostClockOffset : Date.now();
+    var start = state.roundStartAt || (state.roundEndsAt - TURN_MS);
+    if(now <= start) return 100;
+    var elapsed = now - start;
+    return Math.max(0, Math.min(100, 100 - (elapsed / TURN_MS * 100)));
   }
 
   function updateTimerBar(){
@@ -427,6 +436,7 @@
     return {
       round: 1,
       status: 'ready',
+      roundStartAt: null,
       roundEndsAt: null,
       winner: null,
       ready: { p1:false, p2:false },
@@ -495,6 +505,53 @@
     });
   }
 
+  // PeerJSの通信遅延と端末時計のずれを補正する。
+  // 1回だけではなく複数回測定し、最もRTTが短かったサンプルを採用する。
+  function startClockSync(){
+    if(role !== 'guest' || !conn) return;
+    if(clockSyncReady) return;
+    if(!clockSyncPending){
+      clockSyncPending = { count:0, bestRtt:Infinity, bestOffset:0 };
+    }
+    sendClockSyncSample();
+  }
+
+  function sendClockSyncSample(){
+    if(role !== 'guest' || !conn || !clockSyncPending) return;
+    var t0 = Date.now();
+    conn.send({ type:'clock-sync', t0:t0 });
+  }
+
+  function handleClockSync(msg){
+    if(role === 'host' && msg.type === 'clock-sync'){
+      if(!conn) return;
+      conn.send({ type:'clock-sync-reply', t0:msg.t0, th:Date.now() });
+      return;
+    }
+    if(role === 'guest' && msg.type === 'clock-sync-reply'){
+      if(clockSyncReady) return;
+      var t3 = Date.now();
+      var rtt = Math.max(0, t3 - msg.t0);
+      var offset = msg.th - (msg.t0 + rtt / 2);
+      if(!clockSyncPending){
+        clockSyncPending = { count:0, bestRtt:Infinity, bestOffset:0 };
+      }
+      clockSyncPending.count++;
+      if(rtt < clockSyncPending.bestRtt){
+        clockSyncPending.bestRtt = rtt;
+        clockSyncPending.bestOffset = offset;
+      }
+      if(clockSyncPending.count >= 5){
+        hostClockOffset = clockSyncPending.bestOffset;
+        clockSyncReady = true;
+        clockSyncPending = null;
+        if(state && state.status === 'playing'){ render(); startRoundTimer(); }
+      } else {
+        setTimeout(sendClockSyncSample, 80);
+      }
+    }
+  }
+
   // ---------- navigation ----------
   function goHome(){ ui.screen='home'; render(); }
   function goCreate(){ ui.screen='create'; render(); }
@@ -537,6 +594,7 @@
   }
 
   function handleHostData(msg){
+    if(msg.type === 'clock-sync') { handleClockSync(msg); return; }
     if(msg.type === 'join'){
       state = freshState(ui.nameInput.trim() || 'Player 1', msg.name || 'Player 2');
       hostPending = { p1:null, p2:null };
@@ -568,8 +626,10 @@
   function checkReadyStart(){
     if(state.status === 'ready' && state.ready.p1 && state.ready.p2){
       state.status = 'playing';
-      // ホストがラウンド開始時刻を確定する。
-      state.roundEndsAt = Date.now() + TURN_MS;
+      // ホストが未来の開始時刻を確定する。通信遅延中にバーが途中から始まらないよう、
+      // 500msの余裕を持たせ、両者が同じ開始時刻を迎える。
+      state.roundStartAt = Date.now() + ROUND_START_LEAD_MS;
+      state.roundEndsAt = state.roundStartAt + TURN_MS;
       roundClosed = false;
       startRoundTimer();
     }
@@ -591,8 +651,9 @@
       state.winner = (res.hp1<=0 && res.hp2<=0) ? 'draw' : (res.hp1<=0 ? 'p2' : 'p1');
     } else {
       state.round = state.round + 1;
-      // 次ラウンドの1秒をホスト基準で開始し、その終了時刻をゲストへ共有する。
-      state.roundEndsAt = Date.now() + TURN_MS;
+      // 次ラウンドも未来の開始時刻を共有し、両者が同じ時刻から1秒を進める。
+      state.roundStartAt = Date.now() + ROUND_START_LEAD_MS;
+      state.roundEndsAt = state.roundStartAt + TURN_MS;
       roundClosed = false;
     }
     hostPending = { p1:null, p2:null };
@@ -627,6 +688,9 @@
     if(!code){ showToast('部屋コードを入力してください'); return; }
 
     role = 'guest';
+    clockSyncReady = false;
+    clockSyncPending = null;
+    hostClockOffset = 0;
     ui.screen = 'joining';
     render();
 
@@ -637,6 +701,7 @@
 
       conn.on('open', function(){
         conn.send({ type:'join', name: ui.nameInput.trim() || 'Player 2' });
+        setTimeout(startClockSync, 100);
       });
       conn.on('data', function(msg){ handleGuestData(msg); });
       conn.on('close', function(){
@@ -662,6 +727,7 @@
   }
 
   function handleGuestData(msg){
+    if(msg.type === 'clock-sync-reply') { handleClockSync(msg); return; }
     if(msg.type === 'reveal'){
       clearRoundTimer();
       stopTimerBarAnimation();
@@ -676,7 +742,10 @@
       ui.screen = 'battle';
       roundClosed = false;
       render();
-      if(state.status === 'playing'){ startRoundTimer(); } else { clearRoundTimer(); }
+      if(state.status === 'playing'){
+        if(role === 'guest' && !clockSyncReady){ startClockSync(); }
+        else { startRoundTimer(); }
+      } else { clearRoundTimer(); }
     }
   }
 
@@ -689,6 +758,11 @@
       if(conn){ conn.send({ type:'state', state: state }); }
       render();
     } else {
+      if(!clockSyncReady){
+        showToast('時計を同期しています。少し待ってからスタートしてください', 1800);
+        startClockSync();
+        return;
+      }
       state.ready.p2 = true; // optimistic local update
       if(conn){ conn.send({ type:'ready' }); }
       render();
