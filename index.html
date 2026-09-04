@@ -118,6 +118,12 @@
   .abtn.charge{ border-color:#4a4326; } .abtn.charge:hover:not(.disabled):not(.picked){ border-color:var(--charge); }
   .abtn.barrier{ border-color:#264247; } .abtn.barrier:hover:not(.disabled):not(.picked){ border-color:var(--barrier); }
   .abtn.attack{ border-color:#472129; } .abtn.attack:hover:not(.disabled):not(.picked){ border-color:var(--attack); }
+  .special-wrap{ width:100%; max-width:600px; margin-top:8px; }
+  .special-btn{ width:100%; padding:14px 10px; border-radius:10px; border:2px solid #9a5f16; background:#fff0c2; color:#16202c; cursor:pointer; text-align:center; font-weight:800; transition:transform .12s, border-color .12s, background .12s; }
+  .special-btn:hover:not(.disabled){ transform:translateY(-2px); border-color:#c27a1d; background:#ffe7a0; }
+  .special-btn .tt{ font-size:15px; }
+  .special-btn .sub{ font-size:10px; margin-top:3px; color:#6b5a32; }
+  .special-btn.disabled{ opacity:.35; cursor:not-allowed; }
   .abtn.picked.charge{ background:rgba(232,179,57,.15); border-color:var(--charge); }
   .abtn.picked.barrier{ background:rgba(62,201,214,.15); border-color:var(--barrier); }
   .abtn.picked.attack{ background:rgba(224,67,90,.15); border-color:var(--attack); }
@@ -214,6 +220,9 @@
   .duel-half .abtn.charge:hover:not(.disabled):not(.picked){ border-color:#c9971f; }
   .duel-half .abtn.barrier:hover:not(.disabled):not(.picked){ border-color:#1f8f9c; }
   .duel-half .abtn.attack:hover:not(.disabled):not(.picked){ border-color:#b8283c; }
+  .duel-half .special-wrap{ margin-top:4px; }
+  .duel-half .special-btn{ border:2px solid #16202c; background:#fff; }
+  .duel-half .special-btn:hover:not(.disabled){ border-color:#9a5f16; background:#fff0c2; }
   .duel-half .abtn.picked.charge{ background:#fff0c2; }
   .duel-half .abtn.picked.barrier{ background:#c8f2f6; }
   .duel-half .abtn.picked.attack{ background:#fac9d0; }
@@ -279,6 +288,7 @@
   "use strict";
 
   var MAX_CHARGE = 10;
+  var SPECIAL_CHARGE = 5;
   var BASE_DMG = 10;
   var START_HP = 20;
   var ID_PREFIX = 'cbs-duel-';
@@ -617,6 +627,21 @@
       render();
       return;
     }
+    if(msg.type === 'special-win'){
+      if(!state || state.status !== 'playing' || msg.round !== state.round || roundClosed) return;
+      if(state.players.p2.charge < SPECIAL_CHARGE) return;
+      clearRoundTimer();
+      stopTimerBarAnimation();
+      state.status = 'finished';
+      state.winner = 'p2';
+      state.log = state.log.concat([{ round: state.round, text:'P2が5チャージを使い、バリアを貫通する必殺技で問答無用の勝利！' }]);
+      hostPending = { p1:null, p2:null };
+      reveal = null;
+      myMove = null;
+      if(conn){ conn.send({ type:'state', state: state }); }
+      render();
+      return;
+    }
     if(msg.type === 'restart-request'){
       doRestart();
       return;
@@ -777,6 +802,32 @@
     state.players.p2.hp = next;
     if(conn){ conn.send({ type:'state', state: state }); }
     render();
+  }
+
+  function useSpecialWin(){
+    if(!state || state.status !== 'playing') return;
+    var myKey = role === 'host' ? 'p1' : 'p2';
+    var me = state.players[myKey];
+    if(me.charge < SPECIAL_CHARGE) return;
+
+    // 必殺技は通常の1秒ラウンドを待たず、その場で勝利を確定する。
+    // 勝敗の確定は必ずホスト側で行う。
+    if(role === 'host'){
+      if(roundClosed) return;
+      clearRoundTimer();
+      stopTimerBarAnimation();
+      state.status = 'finished';
+      state.winner = 'p1';
+      state.log = state.log.concat([{ round: state.round, text:'P1が5チャージを使い、バリアを貫通する必殺技で問答無用の勝利！' }]);
+      hostPending = { p1:null, p2:null };
+      reveal = null;
+      myMove = null;
+      if(conn){ conn.send({ type:'state', state: state }); }
+      render();
+    } else {
+      conn.send({ type:'special-win', round: state.round });
+      showToast('必殺技を発動しました', 1500);
+    }
   }
 
   function pickMove(move){
@@ -1001,6 +1052,14 @@
         '</div>';
       });
       html += '</div>';
+
+      var specialDisabled = !!reveal || me.charge < SPECIAL_CHARGE;
+      html += '<div class="special-wrap">' +
+        '<button type="button" class="special-btn '+(specialDisabled?'disabled':'')+'" id="btnSpecial" '+(specialDisabled?'disabled':'')+'>' +
+          '<div class="tt">必殺技（5チャージ）</div>' +
+          '<div class="sub">バリアを貫通して、その場で問答無用の勝利</div>' +
+        '</button>' +
+      '</div>';
     }
 
     html += '</div></div>'; // .duel-half.me, .duel-wrap
@@ -1035,6 +1094,9 @@
 
     var restartBtn = document.getElementById('btnRestart');
     if(restartBtn) restartBtn.addEventListener('click', requestRestart);
+
+    var specialBtn = document.getElementById('btnSpecial');
+    if(specialBtn) specialBtn.addEventListener('click', useSpecialWin);
 
     var abtns = app.querySelectorAll('.abtn:not(.startbtn)');
     abtns.forEach(function(el){
