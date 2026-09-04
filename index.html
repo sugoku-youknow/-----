@@ -313,27 +313,28 @@
   }
 
   /* --- 必殺技演出：指定タイムライン 0.0〜2.0秒 --- */
-  .special-fx{position:absolute;inset:0;z-index:1000;pointer-events:none;overflow:hidden;background:#000;opacity:0;animation:sfx-bg 2s linear forwards;}
-  .special-fx::before{content:'';position:absolute;inset:0;background:#fff;opacity:0;animation:sfx-flash 2s linear forwards;}
+  /* render()でDOMが作り直されても、--sfx-elapsed-msで演出位置を再同期する。 */
+  .special-fx{position:absolute;inset:0;z-index:1000;pointer-events:none;overflow:hidden;background:#000;opacity:0;animation:sfx-bg 2s linear forwards;animation-delay:calc(0s - var(--sfx-elapsed-ms));}
+  .special-fx::before{content:'';position:absolute;inset:0;background:#fff;opacity:0;animation:sfx-flash 2s linear forwards;animation-delay:calc(0s - var(--sfx-elapsed-ms));}
 
   /* 0.3〜0.8秒だけ中央に「必殺技!!」を表示 */
-  .sfx-title{position:absolute;left:50%;top:50%;width:100%;text-align:center;font-weight:1000;font-style:italic;letter-spacing:.04em;color:#fff;font-size:clamp(58px,14vw,150px);opacity:0;transform:translate(-50%,-50%) scale(.4);text-shadow:0 0 10px #fff,0 0 30px #ffe14d,0 0 60px #ff7a00;animation:sfx-title .5s ease forwards;animation-delay:.3s;}
-  .sfx-title:after{content:'';position:absolute;left:50%;top:50%;width:18vmin;height:18vmin;border:8px solid #fff;border-radius:50%;transform:translate(-50%,-50%) scale(.1);opacity:0;animation:sfx-ring .6s ease forwards;animation-delay:.3s;}
+  .sfx-title{position:absolute;left:50%;top:50%;width:100%;text-align:center;font-weight:1000;font-style:italic;letter-spacing:.04em;color:#fff;font-size:clamp(58px,14vw,150px);opacity:0;transform:translate(-50%,-50%) scale(.4);text-shadow:0 0 10px #fff,0 0 30px #ffe14d,0 0 60px #ff7a00;animation:sfx-title .5s ease forwards;animation-delay:calc(.3s - var(--sfx-elapsed-ms));}
+  .sfx-title:after{content:'';position:absolute;left:50%;top:50%;width:18vmin;height:18vmin;border:8px solid #fff;border-radius:50%;transform:translate(-50%,-50%) scale(.1);opacity:0;animation:sfx-ring .6s ease forwards;animation-delay:calc(.3s - var(--sfx-elapsed-ms));}
 
   /* 0.8〜1.4秒：巨大な光・衝撃波 */
-  .sfx-light{position:absolute;left:50%;top:50%;width:10px;height:10px;border-radius:50%;background:#fff;box-shadow:0 0 20px 10px #fff,0 0 70px 30px #ffe14d,0 0 150px 70px #ff8a00;transform:translate(-50%,-50%) scale(.1);opacity:0;animation:sfx-light .6s ease-out forwards;animation-delay:.8s;}
-  .sfx-shockwave{position:absolute;left:50%;top:50%;width:20vmin;height:20vmin;border:8px solid #fff;border-radius:50%;transform:translate(-50%,-50%) scale(.1);opacity:0;box-shadow:0 0 35px #fff,inset 0 0 25px #fff;animation:sfx-shock .6s ease-out forwards;animation-delay:.8s;}
-  .sfx-shockwave:nth-of-type(3){animation-delay:.88s;}
+  .sfx-light{position:absolute;left:50%;top:50%;width:10px;height:10px;border-radius:50%;background:#fff;box-shadow:0 0 20px 10px #fff,0 0 70px 30px #ffe14d,0 0 150px 70px #ff8a00;transform:translate(-50%,-50%) scale(.1);opacity:0;animation:sfx-light .6s ease-out forwards;animation-delay:calc(.8s - var(--sfx-elapsed-ms));}
+  .sfx-shockwave{position:absolute;left:50%;top:50%;width:20vmin;height:20vmin;border:8px solid #fff;border-radius:50%;transform:translate(-50%,-50%) scale(.1);opacity:0;box-shadow:0 0 35px #fff,inset 0 0 25px #fff;animation:sfx-shock .6s ease-out forwards;animation-delay:calc(.8s - var(--sfx-elapsed-ms));}
+  .sfx-shockwave:nth-of-type(3){animation-delay:calc(.8s - var(--sfx-elapsed-ms));}
 
   /* 1.4〜2.0秒：勝者側WIN!!、敗者側LOSE!!。それ以前は完全に非表示 */
-  .sfx-result{position:absolute;inset:0;width:100%;height:100%;font-weight:1000;font-style:italic;letter-spacing:.04em;opacity:0;animation:sfx-result .6s ease forwards;animation-delay:1.4s;}
+  .sfx-result{position:absolute;inset:0;width:100%;height:100%;font-weight:1000;font-style:italic;letter-spacing:.04em;opacity:0;animation:sfx-result .6s ease forwards;animation-delay:calc(1.4s - var(--sfx-elapsed-ms));}
   .sfx-result .result-word{position:absolute;left:50%;transform:translateX(-50%);text-align:center;white-space:nowrap;font-size:clamp(42px,10vw,120px);font-weight:1000;}
   .sfx-result .result-word.opp{top:20%;}
   .sfx-result .result-word.me{bottom:20%;}
   .sfx-result .win{color:#fff;text-shadow:0 0 12px #fff,0 0 35px #ffe14d,0 0 70px #ffb000;}
   .sfx-result .lose{color:#bbb;text-shadow:0 0 10px #fff,0 0 30px #777;}
 
-  .special-fx.shaking{animation:sfx-bg 2s linear forwards,sfx-shake .06s 10 .8s;}
+  .special-fx.shaking{animation-name:sfx-bg,sfx-shake;animation-duration:2s,.06s;animation-timing-function:linear,ease;animation-iteration-count:1,10;animation-fill-mode:forwards,none;animation-delay:calc(0s - var(--sfx-elapsed-ms)),calc(.8s - var(--sfx-elapsed-ms));}
   @keyframes sfx-bg{0%,10%{opacity:1}15%,100%{opacity:1}}
   @keyframes sfx-flash{0%,5%{opacity:0}5.1%,10%{opacity:1}10.1%,100%{opacity:0}}
   @keyframes sfx-title{0%{opacity:0;transform:translate(-50%,-50%) scale(.4)}20%{opacity:1;transform:translate(-50%,-50%) scale(1.05)}100%{opacity:0;transform:translate(-50%,-50%) scale(1)}}
@@ -362,6 +363,7 @@
   var specialWinner = null;
   var specialFinishTimer = null;
   var specialFxGeneration = 0;
+  var specialStartedAt = 0;
 
   var ACTIONS = {
     charge:  { label:'ためる', icon:'⚡', sub:'次の攻撃を強化', cls:'charge' },
@@ -719,7 +721,6 @@
       state.specialEndsAt=Date.now()+2000;
       startSpecialAnimation('p2',2000);
       if(conn) conn.send({type:'state',state:state});
-      if(conn) conn.send({type:'special-effect',winner:'p2',round:state.round,endsAt:state.specialEndsAt});
       return;
     }
     if(msg.type === 'restart-request'){
@@ -925,19 +926,21 @@
     specialFinishTimer = null;
     specialAnimating = false;
     specialWinner = null;
+    specialStartedAt = 0;
   }
 
   function startSpecialAnimation(winner, duration){
     resetSpecialAnimation();
     specialAnimating = true;
     specialWinner = winner;
+    var ms = Math.max(0, Number(duration) || 2000);
+    specialStartedAt = Date.now() - Math.max(0, 2000 - ms);
     var generation = specialFxGeneration;
     render();
 
     // CSS animationだけに終了処理を任せず、JSでも必ず終了させる。
     // iOS/Safariではバックグラウンド復帰時などにCSS/JSのタイミングがずれることがあるため、
     // 余裕を持ったフェイルセーフも入れる。
-    var ms = Math.max(0, Number(duration) || 2000);
     specialFinishTimer = setTimeout(function(){
       if(generation !== specialFxGeneration) return;
       if(role === 'host') finishSpecial(winner);
@@ -987,7 +990,6 @@
       state.specialEndsAt=Date.now()+2000;
       startSpecialAnimation('p1',2000);
       if(conn) conn.send({type:'state',state:state});
-      if(conn) conn.send({type:'special-effect',winner:'p1',round:state.round,endsAt:state.specialEndsAt});
     }else{
       conn.send({type:'special-win',round:state.round});
       showToast('必殺技を発動しました',1500);
@@ -1260,7 +1262,8 @@
       var myResult=isWinner?'WIN!!':'LOSE!!';
       var oppClass=oppIsWinner?'win':'lose';
       var myClass=isWinner?'win':'lose';
-      html+='<div class="special-fx shaking"><div class="sfx-title">必殺技!!</div><div class="sfx-light"></div><div class="sfx-shockwave"></div><div class="sfx-shockwave"></div><div class="sfx-result"><div class="result-word opp '+oppClass+'">'+oppResult+'</div><div class="result-word me '+myClass+'">'+myResult+'</div></div></div>';
+      var sfxElapsed = Math.max(0, Date.now() - (specialStartedAt || Date.now()));
+       html+='<div class="special-fx shaking" style="--sfx-elapsed-ms:'+sfxElapsed+'ms"><div class="sfx-title">必殺技!!</div><div class="sfx-light"></div><div class="sfx-shockwave"></div><div class="sfx-shockwave"></div><div class="sfx-result"><div class="result-word opp '+oppClass+'">'+oppResult+'</div><div class="result-word me '+myClass+'">'+myResult+'</div></div></div>';
     }
     app.innerHTML = html;
 
