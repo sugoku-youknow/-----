@@ -138,6 +138,12 @@
   .hpsetter-label{ font-size:12px; font-weight:700; color:#16202c; }
   .setting-panel{ margin:18px auto 0; max-width:420px; padding:14px; border:1px solid var(--line); border-radius:10px; background:var(--panel-2); }
   .battle-setting-panel{ margin-top:10px; background:#fff; border:2px solid #16202c; }
+  .host-ready-start{
+    width:100%; max-width:600px; margin:0 auto 12px;
+  }
+  .host-ready-start .abtn{
+    width:100%; box-sizing:border-box;
+  }
   .setting-row{ display:flex; align-items:center; justify-content:space-between; gap:14px; padding:8px 0; }
   .setting-row + .setting-row{ border-top:1px solid var(--line); }
   .setting-label{ font-size:13px; font-weight:700; text-align:left; }
@@ -578,7 +584,7 @@
 
   // ---------- navigation ----------
   function goHome(){ ui.screen='home'; render(); }
-  function goCreate(){ ui.screen='create'; render(); }
+  function goCreate(){ createRoom(); }
   function goJoin(){ ui.screen='join'; render(); }
 
   // ---------- host ----------
@@ -612,7 +618,7 @@
     peer.on('error', function(err){
       console.error(err);
       showToast('接続エラーが発生しました(' + err.type + ')。もう一度お試しください', 4000);
-      ui.screen = 'create';
+      ui.screen = 'home';
       render();
     });
   }
@@ -839,16 +845,6 @@
     render();
   }
 
-  function adjustCreateHp(delta){
-    ui.hostHp = Math.max(10, Math.min(MAX_HP, ui.hostHp + delta));
-    render();
-  }
-
-  function adjustCreateMaxCharge(delta){
-    ui.hostMaxCharge = Math.max(1, Math.min(MAX_CHARGE, ui.hostMaxCharge + delta));
-    render();
-  }
-
   function useSpecialWin(){
     if(!state || state.status !== 'playing') return;
     var myKey = role === 'host' ? 'p1' : 'p2';
@@ -950,35 +946,6 @@
       return;
     }
 
-    if(ui.screen === 'create'){
-      app.innerHTML =
-        (ui.toast ? '<div class="toast">'+esc(ui.toast)+'</div>' : '') +
-        '<div class="wrap">' +
-          '<div class="brand"><div class="mark">host</div><h1>部屋を作成</h1></div>' +
-          '<div class="card center">' +
-            '<p class="muted">対戦前に、部屋主が初期HPと必殺技に必要な最大チャージ数を設定します。</p>' +
-            '<div class="setting-panel">' +
-              '<div class="setting-row">' +
-                '<span class="setting-label">初期HP</span>' +
-                '<div class="setting-ctrl"><button class="hpbtn" id="createHpMinus" type="button">−</button><span class="hpval">'+ui.hostHp+'</span><button class="hpbtn" id="createHpPlus" type="button">＋</button></div>' +
-              '</div>' +
-              '<div class="setting-row">' +
-                '<span class="setting-label">最大チャージ（必殺技）</span>' +
-                '<div class="setting-ctrl"><button class="hpbtn" id="createChargeMinus" type="button">−</button><span class="hpval">'+ui.hostMaxCharge+'</span><button class="hpbtn" id="createChargePlus" type="button">＋</button></div>' +
-              '</div>' +
-              '<div class="setting-note">HP：10〜100　／　最大チャージ：1〜30</div>' +
-            '</div>' +
-            '<div class="row" style="margin-top:16px">' +
-              '<button class="btn" id="btnBack">戻る</button>' +
-              '<button class="btn primary" id="btnGo">作成する</button>' +
-            '</div>' +
-          '</div>' +
-        '</div>';
-      document.getElementById('btnBack').addEventListener('click', goHome);
-      document.getElementById('btnGo').addEventListener('click', createRoom);
-      return;
-    }
-
     if(ui.screen === 'creating'){
       app.innerHTML =
         '<div class="wrap"><div class="card center"><p class="muted">部屋を準備しています…</p></div></div>';
@@ -1064,8 +1031,17 @@
     var showTimerBar = (state.status === 'playing' && !reveal);
     var timerPercent = showTimerBar ? getTimerPercent() : 0;
 
-    var html = (ui.toast ? '<div class="toast">'+esc(ui.toast)+'</div>' : '') +
-      '<div class="duel-wrap">' +
+    var html = (ui.toast ? '<div class="toast">'+esc(ui.toast)+'</div>' : '');
+
+    // ホストのスタートボタンは相手プレイヤー情報より上に固定。
+    // チャージ枠が30個で2段以上になっても、ボタンの位置が下へ押し出されない。
+    if(state.status === 'ready' && role === 'host' && !state.ready[myKey]){
+      html += '<div class="host-ready-start">' +
+        '<div class="abtn startbtn" id="btnStart"><span class="tt">▶ スタート</span></div>' +
+      '</div>';
+    }
+
+    html += '<div class="duel-wrap">' +
         '<div class="duel-half opp">' +
           '<div class="namebox">'+esc(opp.name)+'</div>' +
           '<div class="hpbox-outer"><div class="hpbox-fill" style="width:'+Math.round(opp.hp/state.hpSetting*100)+'%"></div><div class="hpbox-num">'+opp.hp+' / '+state.hpSetting+'</div></div>' +
@@ -1110,7 +1086,8 @@
 
       if(state.ready[myKey]){
         html += '<div class="waitline">準備完了！相手を待っています…</div>';
-      } else {
+      } else if(role === 'guest'){
+        // ゲスト側のスタートボタンは従来の位置・動作を維持。
         html += '<div class="actions"><div class="abtn startbtn" id="btnStart"><span class="tt">▶ スタート</span></div></div>';
       }
     }
@@ -1175,15 +1152,6 @@
     if(hostChargeMinus) hostChargeMinus.addEventListener('click', function(){ adjustHostMaxCharge(-1); });
     var hostChargePlus = document.getElementById('hostChargePlus');
     if(hostChargePlus) hostChargePlus.addEventListener('click', function(){ adjustHostMaxCharge(1); });
-
-    var createHpMinus = document.getElementById('createHpMinus');
-    if(createHpMinus) createHpMinus.addEventListener('click', function(){ adjustCreateHp(-10); });
-    var createHpPlus = document.getElementById('createHpPlus');
-    if(createHpPlus) createHpPlus.addEventListener('click', function(){ adjustCreateHp(10); });
-    var createChargeMinus = document.getElementById('createChargeMinus');
-    if(createChargeMinus) createChargeMinus.addEventListener('click', function(){ adjustCreateMaxCharge(-1); });
-    var createChargePlus = document.getElementById('createChargePlus');
-    if(createChargePlus) createChargePlus.addEventListener('click', function(){ adjustCreateMaxCharge(1); });
 
     var restartBtn = document.getElementById('btnRestart');
     if(restartBtn) restartBtn.addEventListener('click', requestRestart);
