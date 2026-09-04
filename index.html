@@ -311,6 +311,28 @@
     .abtn:active:not(.disabled):not(.picked){ transform:scale(0.97); border-color:#5a6478; }
     .btn:active:not(:disabled){ transform:scale(0.98); }
   }
+
+  .special-fx{position:fixed;inset:0;z-index:1000;pointer-events:none;overflow:hidden;background:#000;opacity:0;animation:sfx-bg 2s linear forwards;}
+  .special-fx::before{content:'';position:absolute;inset:0;background:#fff;opacity:0;animation:sfx-flash 2s linear forwards;}
+  .sfx-title,.sfx-result{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:100%;text-align:center;font-weight:1000;font-style:italic;letter-spacing:.04em;}
+  .sfx-title{color:#fff;font-size:clamp(58px,14vw,150px);opacity:0;text-shadow:0 0 10px #fff,0 0 30px #ffe14d,0 0 60px #ff7a00;animation:sfx-title 2s linear forwards;}
+  .sfx-title:after{content:'';position:absolute;left:50%;top:50%;width:18vmin;height:18vmin;border:8px solid #fff;border-radius:50%;transform:translate(-50%,-50%) scale(.1);opacity:0;animation:sfx-ring 2s linear forwards;}
+  .sfx-result{display:flex;justify-content:space-around;align-items:center;gap:10px;padding:0 5vw;box-sizing:border-box;opacity:0;animation:sfx-result 2s linear forwards;}
+  .sfx-result .win,.sfx-result .lose{flex:1;font-size:clamp(42px,10vw,120px);font-weight:1000;}
+  .sfx-result .win{color:#fff;text-shadow:0 0 12px #fff,0 0 35px #ffe14d,0 0 70px #ffb000;}
+  .sfx-result .lose{color:#bbb;text-shadow:0 0 10px #fff,0 0 30px #777;}
+  .sfx-light{position:absolute;left:50%;top:50%;width:10px;height:10px;border-radius:50%;background:#fff;box-shadow:0 0 20px 10px #fff,0 0 70px 30px #ffe14d,0 0 150px 70px #ff8a00;transform:translate(-50%,-50%) scale(.1);opacity:0;animation:sfx-light 2s linear forwards;}
+  .sfx-shockwave{position:absolute;left:50%;top:50%;width:20vmin;height:20vmin;border:8px solid #fff;border-radius:50%;transform:translate(-50%,-50%) scale(.1);opacity:0;box-shadow:0 0 35px #fff,inset 0 0 25px #fff;animation:sfx-shock 2s linear forwards;}
+  .sfx-shockwave:nth-of-type(3){animation-delay:.08s;}
+  .special-fx.shaking{animation:sfx-bg 2s linear forwards,sfx-shake .06s 10 .8s;}
+  @keyframes sfx-bg{0%,5%{opacity:1}10%{opacity:0}15%,100%{opacity:1}}
+  @keyframes sfx-flash{0%,5%{opacity:0}5.1%,10%{opacity:1}10.1%,15%,100%{opacity:0}}
+  @keyframes sfx-title{0%,15%{opacity:0;transform:translate(-50%,-50%) scale(.4)}16%{opacity:1;transform:translate(-50%,-50%) scale(1.05)}40%{opacity:1;transform:translate(-50%,-50%) scale(1)}40.1%,100%{opacity:0}}
+  @keyframes sfx-ring{15%,18%{opacity:1}35%{opacity:.5;transform:translate(-50%,-50%) scale(5)}45%,100%{opacity:0;transform:translate(-50%,-50%) scale(8)}}
+  @keyframes sfx-light{0%,40%{opacity:0;transform:translate(-50%,-50%) scale(.1)}41%{opacity:1;transform:translate(-50%,-50%) scale(2)}55%{opacity:1;transform:translate(-50%,-50%) scale(18)}70%{opacity:.35;transform:translate(-50%,-50%) scale(35)}75%,100%{opacity:0;transform:translate(-50%,-50%) scale(45)}}
+  @keyframes sfx-shock{0%,40%{opacity:0;transform:translate(-50%,-50%) scale(.1)}42%{opacity:1}70%{opacity:.55;transform:translate(-50%,-50%) scale(9)}100%{opacity:0;transform:translate(-50%,-50%) scale(18)}}
+  @keyframes sfx-result{0%,69%{opacity:0;transform:translate(-50%,-50%) scale(.7)}70%{opacity:1;transform:translate(-50%,-50%) scale(1.08)}76%,100%{opacity:1;transform:translate(-50%,-50%) scale(1)}}
+  @keyframes sfx-shake{0%{transform:translate(0,0)}25%{transform:translate(-8px,5px)}50%{transform:translate(7px,-6px)}75%{transform:translate(-5px,-4px)}100%{transform:translate(4px,3px)}}
 </style>
 </head>
 <body>
@@ -327,6 +349,9 @@
   var BASE_DMG = 10;
   var ID_PREFIX = 'cbs-duel-';
   var TURN_MS = 1000;
+  var specialAnimating = false;
+  var specialWinner = null;
+  var specialFinishTimer = null;
 
   var ACTIONS = {
     charge:  { label:'ためる', icon:'⚡', sub:'次の攻撃を強化', cls:'charge' },
@@ -676,18 +701,10 @@
       return;
     }
     if(msg.type === 'special-win'){
-      if(!state || state.status !== 'playing' || msg.round !== state.round || roundClosed) return;
+      if(!state || state.status!=='playing' || msg.round!==state.round || roundClosed || specialAnimating) return;
       if(state.players.p2.charge < state.players.p2.maxCharge) return;
-      clearRoundTimer();
-      stopTimerBarAnimation();
-      state.status = 'finished';
-      state.winner = 'p2';
-      state.log = state.log.concat([{ round: state.round, text:'P2が上限チャージを使い、バリアを貫通する必殺技で問答無用の勝利！' }]);
-      hostPending = { p1:null, p2:null };
-      reveal = null;
-      myMove = null;
-      if(conn){ conn.send({ type:'state', state: state }); }
-      render();
+      clearRoundTimer(); stopTimerBarAnimation(); startSpecialAnimation('p2');
+      if(conn) conn.send({type:'special-effect',winner:'p2',round:state.round});
       return;
     }
     if(msg.type === 'restart-request'){
@@ -809,6 +826,11 @@
       render();
       return;
     }
+    if(msg.type === 'special-effect'){
+      if(!state || state.status!=='playing' || msg.round!==state.round) return;
+      clearRoundTimer(); stopTimerBarAnimation(); startSpecialAnimation(msg.winner);
+      return;
+    }
     if(msg.type === 'state'){
       state = msg.state;
       reveal = null;
@@ -865,29 +887,35 @@
     render();
   }
 
-  function useSpecialWin(){
-    if(!state || state.status !== 'playing') return;
-    var myKey = role === 'host' ? 'p1' : 'p2';
-    var me = state.players[myKey];
-    if(me.charge < me.maxCharge) return;
+  function startSpecialAnimation(winner){
+    if(specialAnimating) return;
+    specialAnimating=true; specialWinner=winner;
+    clearTimeout(specialFinishTimer); render();
+    specialFinishTimer=setTimeout(function(){ if(role==='host') finishSpecial(winner); },2000);
+  }
 
-    // 必殺技は通常の1秒ラウンドを待たず、その場で勝利を確定する。
-    // 勝敗の確定は必ずホスト側で行う。
-    if(role === 'host'){
+  function finishSpecial(winner){
+    clearTimeout(specialFinishTimer); specialFinishTimer=null;
+    if(!state || state.status!=='playing') return;
+    clearRoundTimer(); stopTimerBarAnimation();
+    state.status='finished'; state.winner=winner;
+    state.log=state.log.concat([{round:state.round,text:(winner==='p1'?'P1':'P2')+'が上限チャージを使い、バリアを貫通する必殺技で問答無用の勝利！'}]);
+    hostPending={p1:null,p2:null}; reveal=null; myMove=null;
+    specialAnimating=false; specialWinner=null;
+    if(conn) conn.send({type:'state',state:state});
+    render();
+  }
+
+  function useSpecialWin(){
+    if(!state || state.status!=='playing' || specialAnimating) return;
+    var myKey=role==='host'?'p1':'p2'; var me=state.players[myKey];
+    if(me.charge < me.maxCharge) return;
+    if(role==='host'){
       if(roundClosed) return;
-      clearRoundTimer();
-      stopTimerBarAnimation();
-      state.status = 'finished';
-      state.winner = 'p1';
-      state.log = state.log.concat([{ round: state.round, text:'P1が上限チャージを使い、バリアを貫通する必殺技で問答無用の勝利！' }]);
-      hostPending = { p1:null, p2:null };
-      reveal = null;
-      myMove = null;
-      if(conn){ conn.send({ type:'state', state: state }); }
-      render();
-    } else {
-      conn.send({ type:'special-win', round: state.round });
-      showToast('必殺技を発動しました', 1500);
+      clearRoundTimer(); stopTimerBarAnimation(); startSpecialAnimation('p1');
+      if(conn) conn.send({type:'special-effect',winner:'p1',round:state.round});
+    }else{
+      conn.send({type:'special-win',round:state.round}); showToast('必殺技を発動しました',1500);
     }
   }
 
@@ -1119,7 +1147,7 @@
         var a=ACTIONS[key];
         var picked=moveAction(myMove)===key;
         var attackCount=moveAttackCount(myMove);
-        var disabled=!!reveal || (key==='attack' && (me.charge<=0 || attackCount>=me.charge));
+        var disabled=!!reveal || specialAnimating || (key==='attack' && (me.charge<=0 || attackCount>=me.charge));
         var label=a.label;
         if(key==='attack' && picked) label += ' ×'+attackCount+'（'+(BASE_DMG*attackCount)+'ダメージ）';
         html += '<div class="abtn '+a.cls+' '+(disabled?'disabled':'')+' '+(picked?'picked':'')+'" data-move="'+key+'">' +
@@ -1129,7 +1157,7 @@
       });
       html += '</div>';
 
-      var specialDisabled = !!reveal || me.charge < me.maxCharge;
+      var specialDisabled = !!reveal || specialAnimating || me.charge < me.maxCharge;
       html += '<div class="special-wrap">' +
         '<button type="button" class="special-btn '+(specialDisabled?'disabled':'')+'" id="btnSpecial" '+(specialDisabled?'disabled':'')+'>' +
           '<div class="tt">必殺技（'+me.maxCharge+'チャージ）</div>' +
@@ -1150,6 +1178,10 @@
       '</div>';
     }
 
+    if(specialAnimating){
+      var isWinner=specialWinner===myKey;
+      html+='<div class="special-fx shaking"><div class="sfx-title">必殺技!!</div><div class="sfx-light"></div><div class="sfx-shockwave"></div><div class="sfx-shockwave"></div><div class="sfx-result"><div class="'+(isWinner?'win':'lose')+'">WIN!!</div><div class="'+(isWinner?'lose':'win')+'">LOSE!!</div></div></div>';
+    }
     app.innerHTML = html;
 
     // render()でDOMが作り直されても、同じラウンドの時刻をそのまま使う。
