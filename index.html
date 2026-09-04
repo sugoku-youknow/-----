@@ -137,6 +137,7 @@
   }
   .hpsetter-label{ font-size:12px; font-weight:700; color:#16202c; }
   .setting-panel{ margin:18px auto 0; max-width:420px; padding:14px; border:1px solid var(--line); border-radius:10px; background:var(--panel-2); }
+  .battle-setting-panel{ margin-top:10px; background:#fff; border:2px solid #16202c; }
   .setting-row{ display:flex; align-items:center; justify-content:space-between; gap:14px; padding:8px 0; }
   .setting-row + .setting-row{ border-top:1px solid var(--line); }
   .setting-label{ font-size:13px; font-weight:700; text-align:left; }
@@ -1089,9 +1090,23 @@
       });
       html += '</div>';
 
-      html += '<div class="hpsetter">' +
-        '<span class="hpsetter-label">初期HP：'+state.hpSetting+'　／　最大チャージ：'+state.maxChargeSetting+'</span>' +
-      '</div>';
+      if(role === 'host'){
+        html += '<div class="setting-panel battle-setting-panel">' +
+          '<div class="setting-row">' +
+            '<span class="setting-label">初期HP</span>' +
+            '<div class="setting-ctrl"><button class="hpbtn" id="hostHpMinus" type="button">−</button><span class="hpval">'+state.hpSetting+'</span><button class="hpbtn" id="hostHpPlus" type="button">＋</button></div>' +
+          '</div>' +
+          '<div class="setting-row">' +
+            '<span class="setting-label">最大チャージ（必殺技）</span>' +
+            '<div class="setting-ctrl"><button class="hpbtn" id="hostChargeMinus" type="button">−</button><span class="hpval">'+state.maxChargeSetting+'</span><button class="hpbtn" id="hostChargePlus" type="button">＋</button></div>' +
+          '</div>' +
+          '<div class="setting-note">HP：10〜100　／　最大チャージ：1〜30</div>' +
+        '</div>';
+      } else {
+        html += '<div class="hpsetter">' +
+          '<span class="hpsetter-label">初期HP：'+state.hpSetting+'　／　最大チャージ：'+state.maxChargeSetting+'</span>' +
+        '</div>';
+      }
 
       if(state.ready[myKey]){
         html += '<div class="waitline">準備完了！相手を待っています…</div>';
@@ -1151,6 +1166,15 @@
 
     var startBtn = document.getElementById('btnStart');
     if(startBtn) startBtn.addEventListener('click', pressStart);
+
+    var hostHpMinus = document.getElementById('hostHpMinus');
+    if(hostHpMinus) hostHpMinus.addEventListener('click', function(){ adjustHostHp(-10); });
+    var hostHpPlus = document.getElementById('hostHpPlus');
+    if(hostHpPlus) hostHpPlus.addEventListener('click', function(){ adjustHostHp(10); });
+    var hostChargeMinus = document.getElementById('hostChargeMinus');
+    if(hostChargeMinus) hostChargeMinus.addEventListener('click', function(){ adjustHostMaxCharge(-1); });
+    var hostChargePlus = document.getElementById('hostChargePlus');
+    if(hostChargePlus) hostChargePlus.addEventListener('click', function(){ adjustHostMaxCharge(1); });
 
     var createHpMinus = document.getElementById('createHpMinus');
     if(createHpMinus) createHpMinus.addEventListener('click', function(){ adjustCreateHp(-10); });
