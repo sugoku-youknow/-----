@@ -288,7 +288,13 @@
   "use strict";
 
   var MAX_CHARGE = 10;
-  var SPECIAL_CHARGE = 8;
+
+  // 最大HPに応じたチャージ上限
+  function getChargeLimit(hp){
+    if(hp <= 10) return 5;
+    if(hp <= 20) return 8;
+    return 10;
+  }
   var BASE_DMG = 10;
   var START_HP = 20;
   var ID_PREFIX = 'cbs-duel-';
@@ -452,8 +458,8 @@
       ready: { p1:false, p2:false },
       hpSetting: hp,
       players: {
-        p1: { name: hostName || 'Player 1', hp: hp, charge:0 },
-        p2: { name: guestName || 'Player 2', hp: hp, charge:0 },
+        p1: { name: hostName || 'Player 1', hp: hp, charge:0, maxCharge:getChargeLimit(hp) },
+        p2: { name: guestName || 'Player 2', hp: hp, charge:0, maxCharge:getChargeLimit(hp) },
       },
       log: [{ round:0, text:'両者の準備が整うとバトル開始！' }],
     };
@@ -481,9 +487,9 @@
     var n1=moveAttackCount(m1), n2=moveAttackCount(m2);
 
     // 攻撃は押した回数だけチャージを消費する。
-    if(a1==='charge'){ c1=Math.min(MAX_CHARGE,c1+1); }
+    if(a1==='charge'){ c1=Math.min(p1.maxCharge || getChargeLimit(p1.hp),c1+1); }
     else if(a1==='attack'){ c1=Math.max(0,c1-n1); }
-    if(a2==='charge'){ c2=Math.min(MAX_CHARGE,c2+1); }
+    if(a2==='charge'){ c2=Math.min(p2.maxCharge || getChargeLimit(p2.hp),c2+1); }
     else if(a2==='attack'){ c2=Math.max(0,c2-n2); }
 
     // 攻撃同士は相殺。バリアには完全に防がれる。
@@ -641,12 +647,12 @@
     }
     if(msg.type === 'special-win'){
       if(!state || state.status !== 'playing' || msg.round !== state.round || roundClosed) return;
-      if(state.players.p2.charge < SPECIAL_CHARGE) return;
+      if(state.players.p2.charge < state.players.p2.maxCharge) return;
       clearRoundTimer();
       stopTimerBarAnimation();
       state.status = 'finished';
       state.winner = 'p2';
-      state.log = state.log.concat([{ round: state.round, text:'P2が5チャージを使い、バリアを貫通する必殺技で問答無用の勝利！' }]);
+      state.log = state.log.concat([{ round: state.round, text:'P2が上限チャージを使い、バリアを貫通する必殺技で問答無用の勝利！' }]);
       hostPending = { p1:null, p2:null };
       reveal = null;
       myMove = null;
@@ -812,6 +818,8 @@
     state.hpSetting = next;
     state.players.p1.hp = next;
     state.players.p2.hp = next;
+    state.players.p1.maxCharge = getChargeLimit(next);
+    state.players.p2.maxCharge = getChargeLimit(next);
     if(conn){ conn.send({ type:'state', state: state }); }
     render();
   }
@@ -820,7 +828,7 @@
     if(!state || state.status !== 'playing') return;
     var myKey = role === 'host' ? 'p1' : 'p2';
     var me = state.players[myKey];
-    if(me.charge < SPECIAL_CHARGE) return;
+    if(me.charge < me.maxCharge) return;
 
     // 必殺技は通常の1秒ラウンドを待たず、その場で勝利を確定する。
     // 勝敗の確定は必ずホスト側で行う。
@@ -830,7 +838,7 @@
       stopTimerBarAnimation();
       state.status = 'finished';
       state.winner = 'p1';
-      state.log = state.log.concat([{ round: state.round, text:'P1が5チャージを使い、バリアを貫通する必殺技で問答無用の勝利！' }]);
+      state.log = state.log.concat([{ round: state.round, text:'P1が上限チャージを使い、バリアを貫通する必殺技で問答無用の勝利！' }]);
       hostPending = { p1:null, p2:null };
       reveal = null;
       myMove = null;
@@ -853,7 +861,7 @@
     if(action==='attack'){
       var nextCount=(currentAction==='attack')?currentCount+1:1;
       // そのラウンドで押せる攻撃回数は、現在のチャージ数まで。
-      if(nextCount>me.charge) return;
+      if(nextCount>me.charge || nextCount>me.maxCharge) return;
       nextMove=moveForAction('attack',nextCount);
     } else {
       // 「ためる」「バリア」を押したら、それまでの攻撃回数をリセット。
@@ -1070,7 +1078,7 @@
         var attackCount=moveAttackCount(myMove);
         var disabled=!!reveal || (key==='attack' && (me.charge<=0 || attackCount>=me.charge));
         var label=a.label;
-        if(key==='attack' && picked) label += ' ×'+attackCount;
+        if(key==='attack' && picked) label += ' ×'+attackCount+'（'+(BASE_DMG*attackCount)+'ダメージ）';
         html += '<div class="abtn '+a.cls+' '+(disabled?'disabled':'')+' '+(picked?'picked':'')+'" data-move="'+key+'">' +
           '<span class="ic">'+a.icon+'</span>' +
           '<span class="tt">'+label+'</span>' +
@@ -1078,10 +1086,10 @@
       });
       html += '</div>';
 
-      var specialDisabled = !!reveal || me.charge < SPECIAL_CHARGE;
+      var specialDisabled = !!reveal || me.charge < me.maxCharge;
       html += '<div class="special-wrap">' +
         '<button type="button" class="special-btn '+(specialDisabled?'disabled':'')+'" id="btnSpecial" '+(specialDisabled?'disabled':'')+'>' +
-          '<div class="tt">必殺技（5チャージ）</div>' +
+          '<div class="tt">必殺技（'+me.maxCharge+'チャージ）</div>' +
           '<div class="sub">バリアを貫通して、その場で問答無用の勝利</div>' +
         '</button>' +
       '</div>';
@@ -1135,7 +1143,7 @@
 
   function pipsHtml(charge){
     var out = '';
-    for(var i=0;i<MAX_CHARGE;i++){
+    for(var i=0;i<(state && state.players ? ((role==='host'?state.players.p1:state.players.p2).maxCharge || getChargeLimit((role==='host'?state.players.p1:state.players.p2).hp)) : MAX_CHARGE);i++){
       out += '<div class="pip2 ' + (i<charge?'on':'') + '"></div>';
     }
     return out;
