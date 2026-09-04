@@ -312,6 +312,15 @@
     .btn:active:not(:disabled){ transform:scale(0.98); }
   }
 
+  /* --- 通常勝敗演出：0.0〜1.8秒 --- */
+  .normal-result-fx{position:absolute;inset:0;z-index:999;pointer-events:none;overflow:hidden;background:rgba(0,0,0,.82);opacity:0;animation:normal-result-bg 1.8s linear forwards;animation-delay:calc(0s - var(--normal-elapsed-ms));}
+  .normal-result-word{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%) scale(.55);text-align:center;white-space:nowrap;font-size:clamp(58px,14vw,150px);font-weight:1000;font-style:italic;letter-spacing:.04em;opacity:0;animation:normal-result-pop 1.2s ease forwards;animation-delay:calc(.35s - var(--normal-elapsed-ms));}
+  .normal-result-word.win{color:#fff;text-shadow:0 0 12px #fff,0 0 35px #ffe14d,0 0 70px #ffb000;}
+  .normal-result-word.lose{color:#bbb;text-shadow:0 0 10px #fff,0 0 30px #777;}
+  .normal-result-word.draw{color:#fff;text-shadow:0 0 12px #fff,0 0 35px #8aa0b8;}
+  @keyframes normal-result-bg{0%,100%{opacity:1}}
+  @keyframes normal-result-pop{0%{opacity:0;transform:translate(-50%,-50%) scale(.55)}18%{opacity:1;transform:translate(-50%,-50%) scale(1.08)}35%,100%{opacity:1;transform:translate(-50%,-50%) scale(1)}}
+
   /* --- 必殺技演出：指定タイムライン 0.0〜2.6秒 --- */
   /* render()でDOMが作り直されても、--sfx-elapsed-msで演出位置を再同期する。 */
   .special-fx{position:absolute;inset:0;z-index:1000;pointer-events:none;overflow:hidden;background:#000;opacity:0;animation:sfx-bg 2.6s linear forwards;animation-delay:calc(0s - var(--sfx-elapsed-ms));}
@@ -358,9 +367,14 @@
   var ID_PREFIX = 'cbs-duel-';
   var TURN_MS = 1000;
   var SPECIAL_TOTAL_MS = 2600;
-  var SPECIAL_RESULT_DELAY_MS = 1400;
-  var SPECIAL_RESULT_MS = 1200;
+  var NORMAL_RESULT_TOTAL_MS = 1800;
+  var NORMAL_RESULT_DELAY_MS = 350;
   var specialAnimating = false;
+  var normalResultAnimating = false;
+  var normalResultWinner = null;
+  var normalResultFinishTimer = null;
+  var normalResultGeneration = 0;
+  var normalResultStartedAt = 0;
   var specialWinner = null;
   var specialFinishTimer = null;
   var specialFxGeneration = 0;
@@ -754,8 +768,9 @@
     state.players.p2.hp = res.hp2; state.players.p2.charge = res.c2;
     state.log = state.log.concat([{ round: state.round, text: res.text }]);
     if(res.hp1<=0 || res.hp2<=0){
-      state.status = 'finished';
+      state.status = 'normal-finish';
       state.winner = (res.hp1<=0 && res.hp2<=0) ? 'draw' : (res.hp1<=0 ? 'p2' : 'p1');
+      state.normalFinishEndsAt = Date.now() + NORMAL_RESULT_TOTAL_MS;
     } else {
       state.round = state.round + 1;
       // 次ラウンドも未来の開始時刻を共有し、両者が同じ時刻から1秒を進める。
@@ -768,7 +783,11 @@
     myMove = null;
     if(conn){ conn.send({ type:'state', state: state }); }
     render();
-    if(state.status === 'playing'){ startRoundTimer(); }
+    if(state.status === 'playing'){
+      startRoundTimer();
+    } else if(state.status === 'normal-finish'){
+      startNormalResultAnimation(state.winner, NORMAL_RESULT_TOTAL_MS);
+    }
   }
 
   function doRestart(){
@@ -776,6 +795,7 @@
     var hpSetting = state.hpSetting;
     var maxChargeSetting = state.maxChargeSetting;
     resetSpecialAnimation();
+    resetNormalResultAnimation();
     state = freshState(hostName, guestName, hpSetting, maxChargeSetting);
     hostPending = { p1:null, p2:null };
     reveal = null;
@@ -861,14 +881,22 @@
       if(state.status === 'special'){
         clearRoundTimer();
         stopTimerBarAnimation();
+        resetNormalResultAnimation();
         var specialRemain = state.specialEndsAt ? Math.max(0, state.specialEndsAt - (Date.now() + hostClockOffset)) : SPECIAL_TOTAL_MS;
         if(!specialAnimating || specialWinner !== state.winner){
           startSpecialAnimation(state.winner, specialRemain);
         }
-      } else if(state.status === 'finished'){
+      } else if(state.status === 'normal-finish'){
+        clearRoundTimer();
+        stopTimerBarAnimation();
         resetSpecialAnimation();
+        var normalRemain = state.normalFinishEndsAt ? Math.max(0, state.normalFinishEndsAt - (Date.now() + hostClockOffset)) : NORMAL_RESULT_TOTAL_MS;
+        if(!normalResultAnimating || normalResultWinner !== state.winner){
+          startNormalResultAnimation(state.winner, normalRemain);
+        }
       } else {
         resetSpecialAnimation();
+        resetNormalResultAnimation();
       }
 
       render();
@@ -918,6 +946,51 @@
     state.players.p2.maxCharge = next;
     ui.hostMaxCharge = next;
     if(conn){ conn.send({ type:'state', state: state }); }
+    render();
+  }
+
+  function resetNormalResultAnimation(){
+    normalResultGeneration++;
+    clearTimeout(normalResultFinishTimer);
+    normalResultFinishTimer = null;
+    normalResultAnimating = false;
+    normalResultWinner = null;
+    normalResultStartedAt = 0;
+  }
+
+  function startNormalResultAnimation(winner, duration){
+    resetNormalResultAnimation();
+    normalResultAnimating = true;
+    normalResultWinner = winner;
+    var ms = Math.max(0, Number(duration) || NORMAL_RESULT_TOTAL_MS);
+    normalResultStartedAt = Date.now() - Math.max(0, NORMAL_RESULT_TOTAL_MS - ms);
+    var generation = normalResultGeneration;
+    render();
+    normalResultFinishTimer = setTimeout(function(){
+      if(generation !== normalResultGeneration) return;
+      if(role === 'host') finishNormalResult(winner);
+      else if(state && state.status === 'normal-finish') finishNormalResultGuest(winner);
+    }, ms);
+  }
+
+  function finishNormalResultGuest(winner){
+    clearTimeout(normalResultFinishTimer);
+    normalResultFinishTimer = null;
+    if(!state || state.status !== 'normal-finish') return;
+    state.status = 'finished';
+    state.winner = winner;
+    resetNormalResultAnimation();
+    render();
+  }
+
+  function finishNormalResult(winner){
+    clearTimeout(normalResultFinishTimer);
+    normalResultFinishTimer = null;
+    if(!state || state.status !== 'normal-finish') return;
+    state.status = 'finished';
+    state.winner = winner;
+    resetNormalResultAnimation();
+    if(conn) conn.send({type:'state', state:state});
     render();
   }
 
@@ -1253,6 +1326,16 @@
       html += '<div class="card center">' +
         '<h2 style="margin:0 0 8px">' + title + '</h2>' +
         '<button class="btn primary" id="btnRestart" style="margin-top:8px">もう一度対戦する</button>' +
+      '</div>';
+    }
+
+    if(normalResultAnimating){
+      var normalLocalIsWinner = (normalResultWinner === myKey);
+      var normalResultClass = state.winner === 'draw' ? 'draw' : (normalLocalIsWinner ? 'win' : 'lose');
+      var normalResultText = state.winner === 'draw' ? 'DRAW!!' : (normalLocalIsWinner ? 'WIN!!' : 'LOSE!!');
+      var normalElapsed = Math.max(0, Date.now() - (normalResultStartedAt || Date.now()));
+      html += '<div class="normal-result-fx" style="--normal-elapsed-ms:'+normalElapsed+'ms">' +
+        '<div class="normal-result-word '+normalResultClass+'">'+normalResultText+'</div>' +
       '</div>';
     }
 
