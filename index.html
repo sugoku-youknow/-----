@@ -140,7 +140,7 @@
   .battle-setting-panel{ margin-top:10px; background:#fff; border:2px solid #16202c; }
   /* 準備画面のホスト操作はレイアウトの流れから切り離す。
      チャージ枠が何段になっても位置が押し下げられない。 */
-  .host-ready-start{
+  .ready-start-float{
     position:absolute;
     z-index:50;
     top:32%;
@@ -149,8 +149,9 @@
     transform:translate(-50%, -50%);
     pointer-events:auto;
   }
-  .host-ready-start .abtn{
+  .ready-start-float .abtn{
     width:100%; box-sizing:border-box;
+    padding:48px 8px;
     box-shadow:0 4px 14px rgba(0,0,0,.18);
   }
   .host-ready-settings{
@@ -1052,10 +1053,10 @@
 
     var html = (ui.toast ? '<div class="toast">'+esc(ui.toast)+'</div>' : '');
 
-    // ホストのスタートボタンは相手プレイヤー情報より上に固定。
-    // チャージ枠が30個で2段以上になっても、ボタンの位置が下へ押し出されない。
-    if(state.status === 'ready' && role === 'host' && !state.ready[myKey]){
-      html += '<div class="host-ready-start">' +
+    // スタートボタンはプレイヤー情報の通常レイアウトから切り離して固定。
+    // ホスト・ゲストのどちらも、チャージ枠が何段になっても位置が押し下げられない。
+    if(state.status === 'ready' && !state.ready[myKey]){
+      html += '<div class="ready-start-float">' +
         '<div class="abtn startbtn" id="btnStart"><span class="tt">▶ スタート</span></div>' +
       '</div>';
     }
@@ -1107,9 +1108,6 @@
 
       if(state.ready[myKey]){
         html += '<div class="waitline">準備完了！相手を待っています…</div>';
-      } else if(role === 'guest'){
-        // ゲスト側のスタートボタンは従来の位置・動作を維持。
-        html += '<div class="actions"><div class="abtn startbtn" id="btnStart"><span class="tt">▶ スタート</span></div></div>';
       }
     }
 
