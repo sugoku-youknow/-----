@@ -288,7 +288,7 @@
   "use strict";
 
   var MAX_CHARGE = 10;
-  var SPECIAL_CHARGE = 8;
+  var SPECIAL_CHARGE = 5;
   var BASE_DMG = 10;
   var START_HP = 20;
   var ID_PREFIX = 'cbs-duel-';
@@ -363,9 +363,9 @@
 
     if(role === 'guest'){
       if(!myMove){
-        myMove = 'barrier';
+        myMove = moveForAction('barrier');
         if(conn){
-          conn.send({ type:'move', round: state.round, move:'barrier' });
+          conn.send({ type:'move', round: state.round, move: moveForAction('barrier') });
         }
         render();
       }
@@ -373,15 +373,15 @@
     }
 
     // ホスト側では、未選択の行動をバリアとして確定する。
-    if(!hostPending.p1) hostPending.p1 = 'barrier';
-    if(!hostPending.p2) hostPending.p2 = 'barrier';
+    if(!hostPending.p1) hostPending.p1 = moveForAction('barrier');
+    if(!hostPending.p2) hostPending.p2 = moveForAction('barrier');
     resolveAtDeadline();
   }
 
   function resolveAtDeadline(){
     if(role !== 'host' || !roundClosed) return;
-    if(!hostPending.p1) hostPending.p1 = 'barrier';
-    if(!hostPending.p2) hostPending.p2 = 'barrier';
+    if(!hostPending.p1) hostPending.p1 = moveForAction('barrier');
+    if(!hostPending.p2) hostPending.p2 = moveForAction('barrier');
 
     var m1 = hostPending.p1, m2 = hostPending.p2;
     reveal = { p1: m1, p2: m2 };
@@ -459,48 +459,52 @@
     };
   }
 
+  function moveAction(move){
+    if(!move) return null;
+    return typeof move === 'string' ? move : move.action;
+  }
+
+  function moveAttackCount(move){
+    if(moveAction(move) !== 'attack') return 0;
+    if(typeof move === 'object' && move.count != null) return Math.max(1, Math.floor(move.count));
+    return 1;
+  }
+
+  function moveForAction(action, count){
+    return action === 'attack' ? { action:'attack', count:Math.max(1, count || 1) } : { action:action };
+  }
+
   function resolveRound(p1, p2, m1, m2){
     var hp1=p1.hp, hp2=p2.hp, c1=p1.charge, c2=p2.charge;
     var lines = [];
+    var a1=moveAction(m1), a2=moveAction(m2);
+    var n1=moveAttackCount(m1), n2=moveAttackCount(m2);
 
-    // 自分のチャージは自分の行動でのみ増減する(相手の攻撃を受けても減らない)
-    if(m1==='charge'){ c1 = Math.min(MAX_CHARGE, c1+1); }
-    else if(m1==='attack'){ c1 = Math.max(0, c1-1); }
-    if(m2==='charge'){ c2 = Math.min(MAX_CHARGE, c2+1); }
-    else if(m2==='attack'){ c2 = Math.max(0, c2-1); }
+    // 攻撃は押した回数だけチャージを消費する。
+    if(a1==='charge'){ c1=Math.min(MAX_CHARGE,c1+1); }
+    else if(a1==='attack'){ c1=Math.max(0,c1-n1); }
+    if(a2==='charge'){ c2=Math.min(MAX_CHARGE,c2+1); }
+    else if(a2==='attack'){ c2=Math.max(0,c2-n2); }
 
-    // ダメージは常に一律10。バリアで防いだ時と、攻撃同士がぶつかった時は0(相殺)。
-    var dmg1to2 = 0, dmg2to1 = 0;
-    if(m1==='attack' && m2!=='attack'){
-      dmg1to2 = (m2==='barrier') ? 0 : BASE_DMG;
-    }
-    if(m2==='attack' && m1!=='attack'){
-      dmg2to1 = (m1==='barrier') ? 0 : BASE_DMG;
-    }
-    hp2 = Math.max(0, hp2-dmg1to2);
-    hp1 = Math.max(0, hp1-dmg2to1);
+    // 攻撃同士は相殺。バリアには完全に防がれる。
+    // それ以外には「攻撃ボタンを押した回数 × 10」のダメージ。
+    var dmg1to2=0, dmg2to1=0;
+    if(a1==='attack' && a2!=='attack') dmg1to2=(a2==='barrier')?0:BASE_DMG*n1;
+    if(a2==='attack' && a1!=='attack') dmg2to1=(a1==='barrier')?0:BASE_DMG*n2;
+    hp2=Math.max(0,hp2-dmg1to2);
+    hp1=Math.max(0,hp1-dmg2to1);
 
-    if(m1==='charge' && m2==='charge'){
-      lines.push('二人とも「ためる」を選択。両者のチャージが1溜まった。');
-    } else if(m1==='barrier' && m2==='barrier'){
-      lines.push('二人とも「バリア」。何も起こらなかった。');
-    } else if(m1==='charge' && m2==='barrier'){
-      lines.push('P1はチャージ、P2はバリア。P1のチャージが1溜まった。');
-    } else if(m1==='barrier' && m2==='charge'){
-      lines.push('P2はチャージ、P1はバリア。P2のチャージが1溜まった。');
-    } else if(m1==='attack' && m2==='attack'){
-      lines.push('両者「攻撃」が激突！ 相殺してダメージなし。');
-    } else if(m1==='attack' && m2==='barrier'){
-      lines.push('P1の攻撃はP2の「バリア」に防がれた。');
-    } else if(m1==='barrier' && m2==='attack'){
-      lines.push('P2の攻撃はP1の「バリア」に防がれた。');
-    } else if(m1==='attack' && m2==='charge'){
-      lines.push('P2が「ためる」の隙をP1が攻撃！ '+dmg1to2+'ダメージ！');
-    } else if(m1==='charge' && m2==='attack'){
-      lines.push('P1が「ためる」の隙をP2が攻撃！ '+dmg2to1+'ダメージ！');
-    }
+    if(a1==='charge' && a2==='charge') lines.push('二人とも「ためる」を選択。両者のチャージが1溜まった。');
+    else if(a1==='barrier' && a2==='barrier') lines.push('二人とも「バリア」。何も起こらなかった。');
+    else if(a1==='charge' && a2==='barrier') lines.push('P1はチャージ、P2はバリア。P1のチャージが1溜まった。');
+    else if(a1==='barrier' && a2==='charge') lines.push('P2はチャージ、P1はバリア。P2のチャージが1溜まった。');
+    else if(a1==='attack' && a2==='attack') lines.push('両者「攻撃」が激突！ 相殺してダメージなし。');
+    else if(a1==='attack' && a2==='barrier') lines.push('P1の'+n1+'回攻撃はP2の「バリア」に防がれた。');
+    else if(a1==='barrier' && a2==='attack') lines.push('P2の'+n2+'回攻撃はP1の「バリア」に防がれた。');
+    else if(a1==='attack' && a2==='charge') lines.push('P2が「ためる」の隙をP1が'+n1+'回攻撃！ '+dmg1to2+'ダメージ！');
+    else if(a1==='charge' && a2==='attack') lines.push('P1が「ためる」の隙をP2が'+n2+'回攻撃！ '+dmg2to1+'ダメージ！');
 
-    return { hp1:hp1, hp2:hp2, c1:c1, c2:c2, text: lines.join(' ') };
+    return {hp1:hp1,hp2:hp2,c1:c1,c2:c2,text:lines.join(' ')};
   }
 
   function showToast(msg, ms){
@@ -623,7 +627,15 @@
     }
     if(msg.type === 'move'){
       if(!state || msg.round !== state.round || roundClosed) return;
-      hostPending.p2 = msg.move;
+      var guestMove=msg.move;
+      var guestAction=moveAction(guestMove);
+      if(['charge','barrier','attack'].indexOf(guestAction)===-1) return;
+      if(guestAction==='attack'){
+        var guestCount=moveAttackCount(guestMove);
+        if(guestCount<1 || guestCount>state.players.p2.charge) return;
+        guestMove=moveForAction('attack',guestCount);
+      } else { guestMove=moveForAction(guestAction); }
+      hostPending.p2=guestMove;
       render();
       return;
     }
@@ -830,21 +842,30 @@
     }
   }
 
-  function pickMove(move){
-    if(!state || state.status !== 'playing' || myMove) return;
-    var myKey = role === 'host' ? 'p1' : 'p2';
-    var me = state.players[myKey];
-    if(move === 'attack' && me.charge <= 0) return;
-    // 行動を選んでもラウンド終了タイマーは止めない。
-    // 1秒間は必ず同じ基準で赤いバーが進み、確定は1秒後に行う。
-    myMove = move;
+  function pickMove(action){
+    if(!state || state.status!=='playing' || reveal || roundClosed) return;
+    var myKey=role==='host'?'p1':'p2';
+    var me=state.players[myKey];
+    var currentAction=moveAction(myMove);
+    var currentCount=moveAttackCount(myMove);
+    var nextMove;
 
-    if(role === 'host'){
-      if(roundClosed) return;
-      hostPending.p1 = move;
+    if(action==='attack'){
+      var nextCount=(currentAction==='attack')?currentCount+1:1;
+      // そのラウンドで押せる攻撃回数は、現在のチャージ数まで。
+      if(nextCount>me.charge) return;
+      nextMove=moveForAction('attack',nextCount);
+    } else {
+      // 「ためる」「バリア」を押したら、それまでの攻撃回数をリセット。
+      nextMove=moveForAction(action);
+    }
+
+    myMove=nextMove;
+    if(role==='host'){
+      hostPending.p1=nextMove;
       tryResolveHost();
     } else {
-      conn.send({ type:'move', round: state.round, move: move });
+      conn.send({type:'move',round:state.round,move:nextMove});
       render();
     }
   }
@@ -982,14 +1003,15 @@
       oppActionHtml = state.ready[oppKey] ? '<span class="tt">準備完了</span>' : '<span class="ph">準備中…</span>';
       myActionHtml  = state.ready[myKey]  ? '<span class="tt">準備完了</span>' : '<span class="ph">未準備</span>';
     } else if(reveal){
-      var oa = ACTIONS[reveal[oppKey]], ma = ACTIONS[reveal[myKey]];
+      var oa = ACTIONS[moveAction(reveal[oppKey])], ma = ACTIONS[moveAction(reveal[myKey])];
       oppActionHtml = '<span class="ic">'+oa.icon+'</span><span class="tt">'+oa.label+'</span>';
       myActionHtml  = '<span class="ic">'+ma.icon+'</span><span class="tt">'+ma.label+'</span>';
     } else {
       oppActionHtml = '<span class="ph">？</span>';
       if(myMove){
-        var pa = ACTIONS[myMove];
-        myActionHtml = '<span class="ic">'+pa.icon+'</span><span class="tt">'+pa.label+'</span>';
+        var pa = ACTIONS[moveAction(myMove)];
+        var attackSuffix = moveAction(myMove)==='attack' ? ' ×'+moveAttackCount(myMove) : '';
+        myActionHtml = '<span class="ic">'+pa.icon+'</span><span class="tt">'+pa.label+attackSuffix+'</span>';
       } else {
         myActionHtml = '<span class="ph">未選択</span>';
       }
@@ -1004,11 +1026,11 @@
           '<div class="namebox">'+esc(opp.name)+'</div>' +
           '<div class="hpbox-outer"><div class="hpbox-fill" style="width:'+Math.round(opp.hp/state.hpSetting*100)+'%"></div><div class="hpbox-num">'+opp.hp+' / '+state.hpSetting+'</div></div>' +
           '<div class="pipsrow">' + pipsHtml(opp.charge) + '</div>' +
-          '<div class="actionbox '+(reveal?ACTIONS[reveal[oppKey]].cls:'')+'">' + oppActionHtml + '</div>' +
+          '<div class="actionbox '+(reveal?ACTIONS[moveAction(reveal[oppKey])].cls:'')+'">' + oppActionHtml + '</div>' +
         '</div>' +
         '<div class="divider2">' + (showTimerBar ? '<div class="timerbar" id="timerbar" style="width:'+timerPercent+'%"></div>' : '') + '</div>' +
         '<div class="duel-half me">' +
-          '<div class="actionbox '+(reveal?ACTIONS[reveal[myKey]].cls:(myMove?ACTIONS[myMove].cls:''))+'">' + myActionHtml + '</div>' +
+          '<div class="actionbox '+(reveal?ACTIONS[moveAction(reveal[myKey])].cls:(myMove?ACTIONS[moveAction(myMove)].cls:''))+'">' + myActionHtml + '</div>' +
           '<div class="pipsrow">' + pipsHtml(me.charge) + '</div>' +
           '<div class="hpbox-outer"><div class="hpbox-fill" style="width:'+Math.round(me.hp/state.hpSetting*100)+'%"></div><div class="hpbox-num">'+me.hp+' / '+state.hpSetting+'</div></div>' +
           '<div class="namebox">'+esc(me.name)+'</div>';
@@ -1043,12 +1065,15 @@
     if(state.status === 'playing'){
       html += '<div class="actions">';
       Object.keys(ACTIONS).forEach(function(key){
-        var a = ACTIONS[key];
-        var disabled = !!reveal || (key==='attack' && me.charge<=0) || !!myMove;
-        var picked = myMove === key;
-        html += '<div class="abtn '+a.cls+' '+(disabled && !picked ? 'disabled':'')+' '+(picked?'picked':'')+'" data-move="'+key+'">' +
+        var a=ACTIONS[key];
+        var picked=moveAction(myMove)===key;
+        var attackCount=moveAttackCount(myMove);
+        var disabled=!!reveal || (key==='attack' && (me.charge<=0 || attackCount>=me.charge));
+        var label=a.label;
+        if(key==='attack' && picked) label += ' ×'+attackCount;
+        html += '<div class="abtn '+a.cls+' '+(disabled?'disabled':'')+' '+(picked?'picked':'')+'" data-move="'+key+'">' +
           '<span class="ic">'+a.icon+'</span>' +
-          '<span class="tt">'+a.label+'</span>' +
+          '<span class="tt">'+label+'</span>' +
         '</div>';
       });
       html += '</div>';
