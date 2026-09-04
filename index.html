@@ -356,6 +356,7 @@
   var specialAnimating = false;
   var specialWinner = null;
   var specialFinishTimer = null;
+  var specialFxGeneration = 0;
 
   var ACTIONS = {
     charge:  { label:'ためる', icon:'⚡', sub:'次の攻撃を強化', cls:'charge' },
@@ -707,8 +708,13 @@
     if(msg.type === 'special-win'){
       if(!state || state.status!=='playing' || msg.round!==state.round || roundClosed || specialAnimating) return;
       if(state.players.p2.charge < state.players.p2.maxCharge) return;
-      clearRoundTimer(); stopTimerBarAnimation(); startSpecialAnimation('p2');
-      if(conn) conn.send({type:'special-effect',winner:'p2',round:state.round});
+      clearRoundTimer(); stopTimerBarAnimation();
+      state.status='special';
+      state.winner='p2';
+      state.specialEndsAt=Date.now()+2000;
+      startSpecialAnimation('p2',2000);
+      if(conn) conn.send({type:'state',state:state});
+      if(conn) conn.send({type:'special-effect',winner:'p2',round:state.round,endsAt:state.specialEndsAt});
       return;
     }
     if(msg.type === 'restart-request'){
@@ -831,8 +837,10 @@
       return;
     }
     if(msg.type === 'special-effect'){
-      if(!state || state.status!=='playing' || msg.round!==state.round) return;
-      clearRoundTimer(); stopTimerBarAnimation(); startSpecialAnimation(msg.winner);
+      if(!state || (state.status!=='playing' && state.status!=='special') || msg.round!==state.round) return;
+      clearRoundTimer(); stopTimerBarAnimation();
+      var remain = msg.endsAt ? Math.max(0, msg.endsAt - (Date.now() + hostClockOffset)) : 2000;
+      startSpecialAnimation(msg.winner, remain);
       return;
     }
     if(msg.type === 'state'){
@@ -846,11 +854,15 @@
       // ゲスト側の演出オーバーレイを必ず終了する。
       // これを行わないとスマホでWIN/LOSE演出が残り続け、
       // 勝敗画面の再戦ボタンを覆って操作できなくなる。
-      if(state.status === 'finished'){
-        clearTimeout(specialFinishTimer);
-        specialFinishTimer = null;
-        specialAnimating = false;
-        specialWinner = null;
+      if(state.status === 'special'){
+        clearRoundTimer();
+        stopTimerBarAnimation();
+        var specialRemain = state.specialEndsAt ? Math.max(0, state.specialEndsAt - (Date.now() + hostClockOffset)) : 2000;
+        startSpecialAnimation(state.winner, specialRemain);
+      } else if(state.status === 'finished'){
+        resetSpecialAnimation();
+      } else {
+        resetSpecialAnimation();
       }
 
       render();
@@ -903,21 +915,46 @@
     render();
   }
 
-  function startSpecialAnimation(winner){
-    if(specialAnimating) return;
-    specialAnimating=true; specialWinner=winner;
-    clearTimeout(specialFinishTimer); render();
-    specialFinishTimer=setTimeout(function(){ if(role==='host') finishSpecial(winner); },2000);
+  function resetSpecialAnimation(){
+    specialFxGeneration++;
+    clearTimeout(specialFinishTimer);
+    specialFinishTimer = null;
+    specialAnimating = false;
+    specialWinner = null;
+  }
+
+  function startSpecialAnimation(winner, duration){
+    resetSpecialAnimation();
+    specialAnimating = true;
+    specialWinner = winner;
+    var generation = specialFxGeneration;
+    render();
+
+    // CSS animationだけに終了処理を任せず、JSでも必ず終了させる。
+    // iOS/Safariではバックグラウンド復帰時などにCSS/JSのタイミングがずれることがあるため、
+    // 余裕を持ったフェイルセーフも入れる。
+    var ms = Math.max(0, Number(duration) || 2000);
+    specialFinishTimer = setTimeout(function(){
+      if(generation !== specialFxGeneration) return;
+      if(role === 'host') finishSpecial(winner);
+      else if(state && state.status === 'finished') resetSpecialAnimation();
+    }, ms + 150);
   }
 
   function finishSpecial(winner){
-    clearTimeout(specialFinishTimer); specialFinishTimer=null;
-    if(!state || state.status!=='playing') return;
+    clearTimeout(specialFinishTimer);
+    specialFinishTimer=null;
+    if(!state) { resetSpecialAnimation(); return; }
+    if(state.status !== 'playing' && state.status !== 'special') {
+      resetSpecialAnimation();
+      render();
+      return;
+    }
     clearRoundTimer(); stopTimerBarAnimation();
     state.status='finished'; state.winner=winner;
     state.log=state.log.concat([{round:state.round,text:(winner==='p1'?'P1':'P2')+'が上限チャージを使い、バリアを貫通する必殺技で問答無用の勝利！'}]);
     hostPending={p1:null,p2:null}; reveal=null; myMove=null;
-    specialAnimating=false; specialWinner=null;
+    resetSpecialAnimation();
     if(conn) conn.send({type:'state',state:state});
     render();
   }
@@ -928,10 +965,18 @@
     if(me.charge < me.maxCharge) return;
     if(role==='host'){
       if(roundClosed) return;
-      clearRoundTimer(); stopTimerBarAnimation(); startSpecialAnimation('p1');
-      if(conn) conn.send({type:'special-effect',winner:'p1',round:state.round});
+      clearRoundTimer(); stopTimerBarAnimation();
+      // 必殺技演出中であることをホストのstateにも即時反映し、
+      // ゲスト側が「playing」のまま取り残されないようにする。
+      state.status='special';
+      state.winner='p1';
+      state.specialEndsAt=Date.now()+2000;
+      startSpecialAnimation('p1',2000);
+      if(conn) conn.send({type:'state',state:state});
+      if(conn) conn.send({type:'special-effect',winner:'p1',round:state.round,endsAt:state.specialEndsAt});
     }else{
-      conn.send({type:'special-win',round:state.round}); showToast('必殺技を発動しました',1500);
+      conn.send({type:'special-win',round:state.round});
+      showToast('必殺技を発動しました',1500);
     }
   }
 
