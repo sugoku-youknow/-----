@@ -1257,11 +1257,20 @@
     }
 
     if(specialAnimating){
-      var isWinner=specialWinner===myKey;
-      var myResult=isWinner?'WIN!!':'LOSE!!';
-      var myClass=isWinner?'win':'lose';
+      // 勝敗表示は「この端末のプレイヤー」に対して1個だけ生成する。
+      // ゲスト側でもspecialWinner(p1/p2)とmyKey(p2)を比較するため、
+      // 相手側のWIN/LOSE文字列はDOMに一切生成しない。
+      var localIsWinner = (specialWinner === myKey);
+      var localResultClass = localIsWinner ? 'win' : 'lose';
+      var localResultText = localIsWinner ? 'WIN!!' : 'LOSE!!';
       var sfxElapsed = Math.max(0, Date.now() - (specialStartedAt || Date.now()));
-      html+='<div class="special-fx shaking" style="--sfx-elapsed-ms:'+sfxElapsed+'ms"><div class="sfx-title">必殺技!!</div><div class="sfx-light"></div><div class="sfx-shockwave"></div><div class="sfx-shockwave"></div><div class="sfx-result"><div class="result-word '+myClass+'">'+myResult+'</div></div></div>';
+      html += '<div class="special-fx shaking" data-local-result="'+localResultClass+'" style="--sfx-elapsed-ms:'+sfxElapsed+'ms">' +
+        '<div class="sfx-title">必殺技!!</div>' +
+        '<div class="sfx-light"></div>' +
+        '<div class="sfx-shockwave"></div>' +
+        '<div class="sfx-shockwave"></div>' +
+        '<div class="sfx-result"><div class="result-word '+localResultClass+'">'+localResultText+'</div></div>' +
+      '</div>';
     }
     app.innerHTML = html;
 
