@@ -138,11 +138,30 @@
   .hpsetter-label{ font-size:12px; font-weight:700; color:#16202c; }
   .setting-panel{ margin:18px auto 0; max-width:420px; padding:14px; border:1px solid var(--line); border-radius:10px; background:var(--panel-2); }
   .battle-setting-panel{ margin-top:10px; background:#fff; border:2px solid #16202c; }
+  /* 準備画面のホスト操作はレイアウトの流れから切り離す。
+     チャージ枠が何段になっても位置が押し下げられない。 */
   .host-ready-start{
-    width:100%; max-width:600px; margin:0 auto 12px;
+    position:absolute;
+    z-index:50;
+    top:32%;
+    left:50%;
+    width:min(600px, calc(100% - 32px));
+    transform:translate(-50%, -50%);
+    pointer-events:auto;
   }
   .host-ready-start .abtn{
     width:100%; box-sizing:border-box;
+    box-shadow:0 4px 14px rgba(0,0,0,.18);
+  }
+  .host-ready-settings{
+    position:fixed;
+    z-index:60;
+    left:50%;
+    bottom:14px;
+    width:min(520px, calc(100% - 32px));
+    transform:translateX(-50%);
+    margin:0;
+    box-shadow:0 6px 20px rgba(0,0,0,.25);
   }
   .setting-row{ display:flex; align-items:center; justify-content:space-between; gap:14px; padding:8px 0; }
   .setting-row + .setting-row{ border-top:1px solid var(--line); }
@@ -1067,7 +1086,9 @@
       html += '</div>';
 
       if(role === 'host'){
-        html += '<div class="setting-panel battle-setting-panel">' +
+        /* 設定はduel-halfの通常レイアウトから切り離して固定表示。
+           チャージ枠が30個で2段以上になっても、設定ボタンは移動しない。 */
+        html += '<div class="setting-panel battle-setting-panel host-ready-settings">' +
           '<div class="setting-row">' +
             '<span class="setting-label">初期HP</span>' +
             '<div class="setting-ctrl"><button class="hpbtn" id="hostHpMinus" type="button">−</button><span class="hpval">'+state.hpSetting+'</span><button class="hpbtn" id="hostHpPlus" type="button">＋</button></div>' +
