@@ -312,31 +312,54 @@
     .btn:active:not(:disabled){ transform:scale(0.98); }
   }
 
-  .special-fx{position:absolute;inset:0;z-index:1000;pointer-events:none;overflow:hidden;background:#000;opacity:0;animation:sfx-bg 2s linear forwards;}
+  /* --- 必殺技演出：指定タイムライン 0.0〜2.0秒 --- */
+  .special-fx{position:absolute;inset:0;z-index:1000;pointer-events:none;overflow:hidden;background:#000;opacity:1;}
   .special-fx::before{content:'';position:absolute;inset:0;background:#fff;opacity:0;animation:sfx-flash 2s linear forwards;}
-  .sfx-title{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:100%;text-align:center;font-weight:1000;font-style:italic;letter-spacing:.04em;}
-  .sfx-result{position:absolute;inset:0;width:100%;height:100%;font-weight:1000;font-style:italic;letter-spacing:.04em;}
-  .sfx-result .result-word{position:absolute;left:50%;transform:translateX(-50%);text-align:center;white-space:nowrap;}
-  .sfx-result .result-word.opp{top:20%;}
-  .sfx-result .result-word.me{bottom:20%;}
-  .sfx-title{color:#fff;font-size:clamp(58px,14vw,150px);opacity:0;text-shadow:0 0 10px #fff,0 0 30px #ffe14d,0 0 60px #ff7a00;animation:sfx-title 2s linear forwards;}
+  .sfx-title{position:absolute;left:50%;top:50%;width:100%;text-align:center;font-weight:1000;font-style:italic;letter-spacing:.04em;color:#fff;font-size:clamp(58px,14vw,150px);opacity:0;text-shadow:0 0 10px #fff,0 0 30px #ffe14d,0 0 60px #ff7a00;transform:translate(-50%,-50%);animation:sfx-title 2s linear forwards;}
   .sfx-title:after{content:'';position:absolute;left:50%;top:50%;width:18vmin;height:18vmin;border:8px solid #fff;border-radius:50%;transform:translate(-50%,-50%) scale(.1);opacity:0;animation:sfx-ring 2s linear forwards;}
-  .sfx-result{opacity:0;animation:sfx-result 2s linear forwards;}
-  .sfx-result .win,.sfx-result .lose{flex:1;font-size:clamp(42px,10vw,120px);font-weight:1000;}
-  .sfx-result .win{color:#fff;text-shadow:0 0 12px #fff,0 0 35px #ffe14d,0 0 70px #ffb000;}
-  .sfx-result .lose{color:#bbb;text-shadow:0 0 10px #fff,0 0 30px #777;}
   .sfx-light{position:absolute;left:50%;top:50%;width:10px;height:10px;border-radius:50%;background:#fff;box-shadow:0 0 20px 10px #fff,0 0 70px 30px #ffe14d,0 0 150px 70px #ff8a00;transform:translate(-50%,-50%) scale(.1);opacity:0;animation:sfx-light 2s linear forwards;}
   .sfx-shockwave{position:absolute;left:50%;top:50%;width:20vmin;height:20vmin;border:8px solid #fff;border-radius:50%;transform:translate(-50%,-50%) scale(.1);opacity:0;box-shadow:0 0 35px #fff,inset 0 0 25px #fff;animation:sfx-shock 2s linear forwards;}
   .sfx-shockwave:nth-of-type(3){animation-delay:.08s;}
-  .special-fx.shaking{animation:sfx-bg 2s linear forwards,sfx-shake .06s 10 .8s;}
-  @keyframes sfx-bg{0%,5%{opacity:1}10%{opacity:0}15%,100%{opacity:1}}
-  @keyframes sfx-flash{0%,5%{opacity:0}5.1%,10%{opacity:1}10.1%,15%,100%{opacity:0}}
-  @keyframes sfx-title{0%,15%{opacity:0;transform:translate(-50%,-50%) scale(.4)}16%{opacity:1;transform:translate(-50%,-50%) scale(1.05)}40%{opacity:1;transform:translate(-50%,-50%) scale(1)}40.1%,100%{opacity:0}}
-  @keyframes sfx-ring{15%,18%{opacity:1}35%{opacity:.5;transform:translate(-50%,-50%) scale(5)}45%,100%{opacity:0;transform:translate(-50%,-50%) scale(8)}}
-  @keyframes sfx-light{0%,40%{opacity:0;transform:translate(-50%,-50%) scale(.1)}41%{opacity:1;transform:translate(-50%,-50%) scale(2)}55%{opacity:1;transform:translate(-50%,-50%) scale(18)}70%{opacity:.35;transform:translate(-50%,-50%) scale(35)}75%,100%{opacity:0;transform:translate(-50%,-50%) scale(45)}}
-  @keyframes sfx-shock{0%,40%{opacity:0;transform:translate(-50%,-50%) scale(.1)}42%{opacity:1}70%{opacity:.55;transform:translate(-50%,-50%) scale(9)}100%{opacity:0;transform:translate(-50%,-50%) scale(18)}}
-  @keyframes sfx-result{0%,69%{opacity:0;transform:translate(-50%,-50%) scale(.7)}70%{opacity:1;transform:translate(-50%,-50%) scale(1.08)}76%,100%{opacity:1;transform:translate(-50%,-50%) scale(1)}}
-  @keyframes sfx-shake{0%{transform:translate(0,0)}25%{transform:translate(-8px,5px)}50%{transform:translate(7px,-6px)}75%{transform:translate(-5px,-4px)}100%{transform:translate(4px,3px)}}
+  .sfx-result{position:absolute;inset:0;width:100%;height:100%;font-weight:1000;font-style:italic;letter-spacing:.04em;opacity:0;animation:sfx-result 2s linear forwards;}
+  .sfx-result .result-word{position:absolute;left:50%;transform:translateX(-50%);text-align:center;white-space:nowrap;font-size:clamp(42px,10vw,120px);font-weight:1000;}
+  .sfx-result .result-word.opp{top:20%;}
+  .sfx-result .result-word.me{bottom:20%;}
+  .sfx-result .win{color:#fff;text-shadow:0 0 12px #fff,0 0 35px #ffe14d,0 0 70px #ffb000;}
+  .sfx-result .lose{color:#bbb;text-shadow:0 0 10px #fff,0 0 30px #777;}
+  @keyframes sfx-flash{
+    0%,5%{opacity:0}
+    5.1%,10%{opacity:1}
+    10.1%,100%{opacity:0}
+  }
+  @keyframes sfx-title{
+    0%,15%{opacity:0;transform:translate(-50%,-50%) scale(.4)}
+    15.1%,18%{opacity:1;transform:translate(-50%,-50%) scale(1.05)}
+    18%,40%{opacity:1;transform:translate(-50%,-50%) scale(1)}
+    40.1%,100%{opacity:0;transform:translate(-50%,-50%) scale(1)}
+  }
+  @keyframes sfx-ring{
+    15%,18%{opacity:1;transform:translate(-50%,-50%) scale(.3)}
+    35%{opacity:.5;transform:translate(-50%,-50%) scale(5)}
+    45%,100%{opacity:0;transform:translate(-50%,-50%) scale(8)}
+  }
+  @keyframes sfx-light{
+    0%,40%{opacity:0;transform:translate(-50%,-50%) scale(.1)}
+    40.1%{opacity:1;transform:translate(-50%,-50%) scale(2)}
+    55%{opacity:1;transform:translate(-50%,-50%) scale(18)}
+    70%{opacity:.35;transform:translate(-50%,-50%) scale(35)}
+    75%,100%{opacity:0;transform:translate(-50%,-50%) scale(45)}
+  }
+  @keyframes sfx-shock{
+    0%,40%{opacity:0;transform:translate(-50%,-50%) scale(.1)}
+    40.1%,42%{opacity:1}
+    70%{opacity:.55;transform:translate(-50%,-50%) scale(9)}
+    100%{opacity:0;transform:translate(-50%,-50%) scale(18)}
+  }
+  @keyframes sfx-result{
+    0%,69%{opacity:0}
+    70%{opacity:1}
+    76%,100%{opacity:1}
+  }
 </style>
 </head>
 <body>
@@ -765,6 +788,7 @@
   }
 
   function doRestart(){
+    resetSpecialAnimation();
     var hostName = state.players.p1.name, guestName = state.players.p2.name;
     var hpSetting = state.hpSetting;
     var maxChargeSetting = state.maxChargeSetting;
@@ -836,13 +860,9 @@
       render();
       return;
     }
-    if(msg.type === 'special-effect'){
-      if(!state || (state.status!=='playing' && state.status!=='special') || msg.round!==state.round) return;
-      clearRoundTimer(); stopTimerBarAnimation();
-      var remain = msg.endsAt ? Math.max(0, msg.endsAt - (Date.now() + hostClockOffset)) : 2000;
-      startSpecialAnimation(msg.winner, remain);
-      return;
-    }
+    // 必殺技演出はstateのspecialEndsAtだけを基準にする。
+    // 別メッセージで同じ演出を再起動すると、スマホで演出が二重・再始動するため受け付けない。
+    if(msg.type === 'special-effect') return;
     if(msg.type === 'state'){
       state = msg.state;
       reveal = null;
@@ -937,8 +957,22 @@
     specialFinishTimer = setTimeout(function(){
       if(generation !== specialFxGeneration) return;
       if(role === 'host') finishSpecial(winner);
-      else if(state && state.status === 'finished') resetSpecialAnimation();
+      else finishSpecialGuest(winner);
     }, ms + 150);
+  }
+
+  function finishSpecialGuest(winner){
+    clearTimeout(specialFinishTimer);
+    specialFinishTimer = null;
+    if(!state || state.status !== 'special') return;
+    // ゲスト側は表示を確実に勝敗画面へ進めるためのローカル処理。
+    // 次にホストから届くfinished stateが最終的な正解となる。
+    clearRoundTimer();
+    stopTimerBarAnimation();
+    state.status = 'finished';
+    state.winner = winner;
+    resetSpecialAnimation();
+    render();
   }
 
   function finishSpecial(winner){
