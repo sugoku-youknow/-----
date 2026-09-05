@@ -173,6 +173,9 @@
     color:#16202c;
   }
   .namebox{ padding:10px 14px; text-align:center; font-weight:700; font-size:15px; }
+  .namebox.debug-btn{ cursor:pointer; transition:transform .12s, background .12s; }
+  .namebox.debug-btn:hover{ background:#fff7d6; }
+  .namebox.debug-btn:active{ transform:scale(0.98); }
   .hpbox-outer{ height:24px; position:relative; overflow:hidden; }
   .hpbox-fill{ height:100%; background:#ffe14d; transition:width .5s ease; }
   .hpbox-num{ position:absolute; inset:0; display:flex; align-items:center; justify-content:center; font-size:11px; font-weight:800; }
@@ -683,6 +686,13 @@
       if(conn) conn.send({type:'state',state:state});
       return;
     }
+    if(msg.type === 'debug-max-charge'){
+      if(!state || state.status !== 'playing') return;
+      state.players.p2.charge = state.players.p2.maxCharge;
+      if(conn) conn.send({type:'state', state:state});
+      render();
+      return;
+    }
     if(msg.type === 'restart-request'){
       doRestart();
       return;
@@ -892,6 +902,18 @@
     ui.hostMaxCharge = next;
     if(conn){ conn.send({ type:'state', state: state }); }
     render();
+  }
+
+  // テスト用：相手のプレイヤー名を押すと、自分のチャージを上限まで即座に満タンにする。
+  function debugMaxCharge(){
+    if(!state || state.status !== 'playing') return;
+    if(role === 'host'){
+      state.players.p1.charge = state.players.p1.maxCharge;
+      if(conn){ conn.send({ type:'state', state: state }); }
+      render();
+    } else {
+      if(conn){ conn.send({ type:'debug-max-charge' }); }
+    }
   }
 
   function resetNormalResultAnimation(){
@@ -1174,6 +1196,7 @@
 
     var showTimerBar = (state.status === 'playing' && !reveal);
     var timerPercent = showTimerBar ? getTimerPercent() : 0;
+    var debugEnabled = (state.status === 'playing');
 
     var html = (ui.toast ? '<div class="toast">'+esc(ui.toast)+'</div>' : '');
 
@@ -1187,7 +1210,7 @@
 
     html += '<div class="duel-wrap">' +
         '<div class="duel-half opp">' +
-          '<div class="namebox">'+esc(opp.name)+'</div>' +
+          '<div class="namebox'+(debugEnabled?' debug-btn':'')+'" id="oppNameBox">'+esc(opp.name)+'</div>' +
           '<div class="hpbox-outer"><div class="hpbox-fill" style="width:'+Math.round(opp.hp/state.hpSetting*100)+'%"></div><div class="hpbox-num">'+opp.hp+' / '+state.hpSetting+'</div></div>' +
           '<div class="pipsrow">' + pipsHtml(opp.charge) + '</div>' +
           '<div class="actionbox '+(reveal?ACTIONS[moveAction(reveal[oppKey])].cls:'')+'">' + oppActionHtml + '</div>' +
@@ -1312,6 +1335,9 @@
 
     var startBtn = document.getElementById('btnStart');
     if(startBtn) startBtn.addEventListener('click', pressStart);
+
+    var oppNameBox = document.getElementById('oppNameBox');
+    if(oppNameBox && debugEnabled) oppNameBox.addEventListener('click', debugMaxCharge);
 
     var hostHpMinus = document.getElementById('hostHpMinus');
     if(hostHpMinus) hostHpMinus.addEventListener('click', function(){ adjustHostHp(-10); });
