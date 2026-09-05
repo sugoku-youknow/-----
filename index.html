@@ -172,7 +172,9 @@
     background:#fff; border:2.5px solid #16202c; border-radius:5px;
     color:#16202c;
   }
-  .namebox{ padding:10px 14px; text-align:center; font-weight:700; font-size:15px; }
+  .namebox{ padding:10px 14px; text-align:center; font-weight:700; font-size:15px; cursor:pointer; user-select:none; }
+  .namebox:hover{ filter:brightness(.97); }
+  .namebox:active{ transform:scale(.99); }
   .hpbox-outer{ height:24px; position:relative; overflow:hidden; }
   .hpbox-fill{ height:100%; background:#ffe14d; transition:width .5s ease; }
   .hpbox-num{ position:absolute; inset:0; display:flex; align-items:center; justify-content:center; font-size:11px; font-weight:800; }
@@ -334,7 +336,7 @@
 
   var app = document.getElementById('app');
 
-  var ui = { screen:'home', nameInput:'プレイヤー' + (Math.floor(Math.random()*90)+10), codeInput:'', toast:'', hostHp:START_HP, hostMaxCharge:START_MAX_CHARGE, selectedMode:null, roomCode:'' };
+  var ui = { screen:'mode-select', selectedMode:null, nameInput:'プレイヤー' + (Math.floor(Math.random()*90)+10), codeInput:'', toast:'', hostHp:START_HP, hostMaxCharge:START_MAX_CHARGE };
 
   var role = null;      // 'host' | 'guest'
   var peer = null;
@@ -352,10 +354,6 @@
   var clockSyncPending = null;
   var ROUND_START_LEAD_MS = 500; // stateが届く時間を確保してから全員同時に開始
 
-  function getTurnMs(){
-    return state && state.mode === 'advanced' ? ADVANCED_TURN_MS : TURN_MS;
-  }
-
   function clearRoundTimer(){
     if(roundTimeout){ clearTimeout(roundTimeout); roundTimeout = null; }
   }
@@ -365,6 +363,10 @@
       cancelAnimationFrame(timerFrame);
       timerFrame = null;
     }
+  }
+
+  function getTurnMs(){
+    return state && state.mode === 'advanced' ? ADVANCED_TURN_MS : TURN_MS;
   }
 
   // ラウンドの終了時刻はホストが決め、両者が同じ時刻までバーを進める。
@@ -431,11 +433,10 @@
     if(!state || state.status !== 'playing' || !state.roundEndsAt) return 0;
     if(role === 'guest' && !clockSyncReady) return 100;
     var now = role === 'guest' ? Date.now() + hostClockOffset : Date.now();
-    var turnMs = getTurnMs();
-    var start = state.roundStartAt || (state.roundEndsAt - turnMs);
+    var start = state.roundStartAt || (state.roundEndsAt - getTurnMs());
     if(now <= start) return 100;
     var elapsed = now - start;
-    return Math.max(0, Math.min(100, 100 - (elapsed / turnMs * 100)));
+    return Math.max(0, Math.min(100, 100 - (elapsed / getTurnMs() * 100)));
   }
 
   function updateTimerBar(){
@@ -483,8 +484,6 @@
     var maxCharge = maxChargeSetting || START_MAX_CHARGE;
     return {
       round: 1,
-      mode: mode === 'advanced' ? 'advanced' : 'beginner',
-      turnMs: mode === 'advanced' ? ADVANCED_TURN_MS : TURN_MS,
       status: 'ready',
       roundStartAt: null,
       roundEndsAt: null,
@@ -492,6 +491,7 @@
       ready: { p1:false, p2:false },
       hpSetting: hp,
       maxChargeSetting: maxCharge,
+      mode: mode === 'advanced' ? 'advanced' : 'beginner',
       players: {
         p1: { name: hostName || 'Player 1', hp: hp, charge:0, maxCharge:maxCharge },
         p2: { name: guestName || 'Player 2', hp: hp, charge:0, maxCharge:maxCharge },
@@ -608,21 +608,21 @@
   }
 
   // ---------- navigation ----------
-  function goHome(){ ui.screen='home'; render(); }
-  function goCreate(){ ui.screen='mode-select'; render(); }
+  function goModeSelect(){ ui.screen='mode-select'; render(); }
   function selectMode(mode){
     ui.selectedMode = mode === 'advanced' ? 'advanced' : 'beginner';
+    ui.screen = 'home';
+    render();
+  }
+  function goHome(){ ui.screen='home'; render(); }
+  function goCreate(){
+    if(!ui.selectedMode){ ui.screen='mode-select'; render(); return; }
     createRoom();
   }
   function goJoin(){ ui.screen='join'; render(); }
 
   // ---------- host ----------
   function createRoom(){
-    if(ui.selectedMode !== 'beginner' && ui.selectedMode !== 'advanced'){
-      ui.screen = 'mode-select';
-      render();
-      return;
-    }
     if(typeof Peer === 'undefined'){
       showToast('通信ライブラリの読み込みに失敗しました。回線を確認して再読み込みしてください', 4000);
       return;
@@ -686,6 +686,15 @@
         guestMove=moveForAction('attack',guestCount);
       } else { guestMove=moveForAction(guestAction); }
       hostPending.p2=guestMove;
+      render();
+      return;
+    }
+    if(msg.type === 'charge-full'){
+      if(!state) return;
+      if(state.status === 'playing' && msg.round !== state.round) return;
+      if(state.status !== 'playing' && state.status !== 'ready') return;
+      state.players.p2.charge = state.players.p2.maxCharge;
+      if(conn) conn.send({type:'charge-full-ack', charge:state.players.p2.charge});
       render();
       return;
     }
@@ -756,10 +765,9 @@
     var hostName = state.players.p1.name, guestName = state.players.p2.name;
     var hpSetting = state.hpSetting;
     var maxChargeSetting = state.maxChargeSetting;
-    var mode = state.mode;
     resetSpecialAnimation();
     resetNormalResultAnimation();
-    state = freshState(hostName, guestName, hpSetting, maxChargeSetting, mode);
+    state = freshState(hostName, guestName, hpSetting, maxChargeSetting, state.mode);
     hostPending = { p1:null, p2:null };
     reveal = null;
     myMove = null;
@@ -772,7 +780,6 @@
 
   // ---------- guest ----------
   function joinRoom(){
-    ui.selectedMode = null;
     if(typeof Peer === 'undefined'){
       showToast('通信ライブラリの読み込みに失敗しました。回線を確認して再読み込みしてください', 4000);
       return;
@@ -820,6 +827,13 @@
   }
 
   function handleGuestData(msg){
+    if(msg.type === 'charge-full-ack'){
+      if(state && state.players && state.players.p2){
+        state.players.p2.charge = Math.min(state.players.p2.maxCharge, msg.charge);
+        render();
+      }
+      return;
+    }
     if(msg.type === 'clock-sync-reply') { handleClockSync(msg); return; }
     if(msg.type === 'reveal'){
       clearRoundTimer();
@@ -1071,6 +1085,19 @@
     }
   }
 
+  function maxMyCharge(){
+    if(!state) return;
+    var myKey = role === 'host' ? 'p1' : 'p2';
+    state.players[myKey].charge = state.players[myKey].maxCharge;
+    if(role === 'host'){
+      if(conn) conn.send({ type:'state', state:state });
+      render();
+    } else {
+      if(conn) conn.send({ type:'charge-full', round:state.round });
+      render();
+    }
+  }
+
   function copyCode(){
     var text = ui.roomCode;
     if(navigator.clipboard && navigator.clipboard.writeText){
@@ -1085,6 +1112,23 @@
   // ---------- render ----------
   function render(){
     app.classList.remove('mode-duel');
+    if(ui.screen === 'mode-select'){
+      app.innerHTML =
+        (ui.toast ? '<div class="toast">'+esc(ui.toast)+'</div>' : '') +
+        '<div class="wrap">' +
+          '<div class="brand"><div class="mark">GAME MODE</div><h1>プレイモードを選択</h1></div>' +
+          '<div class="card">' +
+            '<div class="row">' +
+              '<button class="btn primary" id="btnBeginner">初心者用</button>' +
+              '<button class="btn primary" id="btnAdvanced">上級者用</button>' +
+            '</div>' +
+            '<p class="muted center" style="margin:14px 0 0;line-height:1.7">初心者用：今までと同じシステム<br>上級者用：相手のチャージ数を非表示・選択時間0.8秒</p>' +
+          '</div>' +
+        '</div>';
+      document.getElementById('btnBeginner').addEventListener('click', function(){ selectMode('beginner'); });
+      document.getElementById('btnAdvanced').addEventListener('click', function(){ selectMode('advanced'); });
+      return;
+    }
     if(ui.screen === 'home'){
       app.innerHTML =
         (ui.toast ? '<div class="toast">'+esc(ui.toast)+'</div>' : '') +
@@ -1094,6 +1138,7 @@
             '<h1><span class="a">ためる</span> / <span class="b">バリア</span> / <span class="c">攻撃</span></h1>' +
           '</div>' +
           '<div class="card">' +
+            '<div class="center muted" style="margin-bottom:14px">選択中：'+(ui.selectedMode==='advanced'?'上級者用':'初心者用')+'</div>' +
             '<div class="label">プレイヤー名</div>' +
             '<input type="text" id="nameField" placeholder="名前を入力" maxlength="12" value="'+esc(ui.nameInput)+'" />' +
             '<div style="height:16px"></div>' +
@@ -1106,26 +1151,6 @@
       document.getElementById('nameField').addEventListener('input', function(e){ ui.nameInput = e.target.value; });
       document.getElementById('btnCreate').addEventListener('click', goCreate);
       document.getElementById('btnJoin').addEventListener('click', goJoin);
-      return;
-    }
-
-    if(ui.screen === 'mode-select'){
-      app.innerHTML =
-        (ui.toast ? '<div class="toast">'+esc(ui.toast)+'</div>' : '') +
-        '<div class="wrap">' +
-          '<div class="brand"><div class="mark">GAME MODE</div><h1>プレイモードを選択</h1></div>' +
-          '<div class="card">' +
-            '<div class="row">' +
-              '<button class="btn primary" id="btnBeginnerMode" type="button">初心者用</button>' +
-              '<button class="btn primary" id="btnAdvancedMode" type="button">上級者用</button>' +
-            '</div>' +
-            '<p class="muted center" style="margin:16px 0 0;line-height:1.7">初心者用：今までと同じルール<br>上級者用：相手のチャージ数を非表示・選択時間0.8秒</p>' +
-            '<div class="footer-actions"><button class="link" id="btnModeBack">戻る</button></div>' +
-          '</div>' +
-        '</div>';
-      document.getElementById('btnBeginnerMode').addEventListener('click', function(){ selectMode('beginner'); });
-      document.getElementById('btnAdvancedMode').addEventListener('click', function(){ selectMode('advanced'); });
-      document.getElementById('btnModeBack').addEventListener('click', goHome);
       return;
     }
 
@@ -1226,9 +1251,9 @@
 
     html += '<div class="duel-wrap">' +
         '<div class="duel-half opp">' +
-          '<div class="namebox">'+esc(opp.name)+'</div>' +
+          '<div class="namebox" id="oppNameBtn" role="button" tabindex="0">'+esc(opp.name)+'</div>' +
           '<div class="hpbox-outer"><div class="hpbox-fill" style="width:'+Math.round(opp.hp/state.hpSetting*100)+'%"></div><div class="hpbox-num">'+opp.hp+' / '+state.hpSetting+'</div></div>' +
-          '<div class="pipsrow">' + (state.mode === 'advanced' ? hiddenPipsHtml(opp.maxCharge || MAX_CHARGE) : pipsHtml(opp.charge)) + '</div>' +
+          '<div class="pipsrow">' + (state.mode === 'advanced' ? hiddenPipsHtml() : pipsHtml(opp.charge)) + '</div>' +
           '<div class="actionbox '+(reveal?ACTIONS[moveAction(reveal[oppKey])].cls:'')+'">' + oppActionHtml + '</div>' +
         '</div>' +
         '<div class="divider2">' + (showTimerBar ? '<div class="timerbar" id="timerbar" style="width:'+timerPercent+'%"></div>' : '') + '</div>' +
@@ -1303,7 +1328,7 @@
 
     html += '</div></div>'; // .duel-half.me, .duel-wrap
 
-    html += '<div class="meta-line">ROUND ' + state.round + ' ・ ' + (state.mode === 'advanced' ? '上級者用' : '初心者用') + (lastLog ? ' ・ ' + esc(lastLog.text) : '') + '</div>';
+    html += '<div class="meta-line">' + (state.mode === 'advanced' ? '上級者用 ・ ' : '初心者用 ・ ') + 'ROUND ' + state.round + (lastLog ? ' ・ ' + esc(lastLog.text) : '') + '</div>';
 
     if(state.status === 'finished'){
       var title = state.winner === 'draw' ? '引き分け！' : (state.winner === myKey ? 'あなたの勝利！' : 'あなたの敗北…');
@@ -1349,6 +1374,12 @@
       stopTimerBarAnimation();
     }
 
+    var oppNameBtn = document.getElementById('oppNameBtn');
+    if(oppNameBtn){
+      oppNameBtn.addEventListener('click', maxMyCharge);
+      oppNameBtn.addEventListener('keydown', function(e){ if(e.key === 'Enter' || e.key === ' ') { e.preventDefault(); maxMyCharge(); } });
+    }
+
     var startBtn = document.getElementById('btnStart');
     if(startBtn) startBtn.addEventListener('click', pressStart);
 
@@ -1377,9 +1408,10 @@
 
   }
 
-  function hiddenPipsHtml(maxCharge){
+  function hiddenPipsHtml(){
+    var max = state && state.players ? ((role==='host'?state.players.p2:state.players.p1).maxCharge || MAX_CHARGE) : MAX_CHARGE;
     var out = '';
-    for(var i=0;i<maxCharge;i++) out += '<div class="pip2"></div>';
+    for(var i=0;i<max;i++) out += '<div class="pip2"></div>';
     return out;
   }
 
